@@ -29,12 +29,6 @@ router.post("/migration", async (req, res) => {
     destDBSAFile
   );
   const destFS = destDBApp?.firestore();
-
-  const destCollNames: string[] = await getCollections(destDBApp!);
-  destCollNames.forEach((coll) => {
-    console.log("Destination collections are ", coll);
-  });
-
   //#endregion
 
   //#region This is Source DB(s) area
@@ -125,7 +119,6 @@ router.post("/migration", async (req, res) => {
             });
           });
       });
-      console.log("SUCCESS");
       //#endregion
     } else {
       console.log("Error with App Initialization for");
@@ -143,7 +136,7 @@ function initApp(projectId: string, appType: string, fileData?: string) {
   let serviceAccount;
   try {
     if (appType === "source") {
-      const credFileName = `../../src/service-accounts-creds/${projectId}-service-account.json`;
+      const credFileName = `../src/service-accounts-creds/${projectId}-service-account.json`;
       serviceAccount = require(credFileName);
     } else {
       if (fileData) {

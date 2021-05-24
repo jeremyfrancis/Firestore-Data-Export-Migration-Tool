@@ -27,7 +27,7 @@ yarn-error.log*
 node_modules
 lib/
 src/service-accounts-creds/*.json
-src/services/serviceAccountList.txt
+serviceAccountList.txt
 *-lock.json
 yarn.lock
 client/public/

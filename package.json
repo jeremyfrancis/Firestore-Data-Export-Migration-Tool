@@ -1,0 +1,26 @@
+{
+  "name": "atp-migr-fullstack",
+  "version": "1.0.0",
+  "description": "",
+  "main": "lib/index.js",
+  "scripts": {
+    "start": "rm -rf lib && tsc && node lib/server/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/express": "^4.16.1",
+    "tslint": "^5.12.1",
+    "typescript": "^4.2.4"
+  },
+  "dependencies": {
+    "body-parser": "^1.18.3",
+    "bootstrap": "^5.0.1",
+    "express": "^4.16.4",
+    "express-validator": "^6.11.1",
+    "firebase-admin": "^9.8.0",
+    "font-awesome": "^4.7.0"
+  }
+}

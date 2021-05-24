@@ -29,3 +29,4 @@ lib/
 src/service-accounts-creds/*.json
 src/services/serviceAccountList.txt
 *-lock.json
+yarn.lock

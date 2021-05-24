@@ -10,7 +10,7 @@
 ---
 ### This is a fullstack (React-NodeJs-Firestore) tool created to move your data from multiple firebase projects with same collection names to a single project with merged data.
 
-### _Problem_ : I have a lot of separate firebase projects for one product/app. I wish there was a way to merge all those separate firestore collection data into one ?
+### _Problem_ : I have a lot of separate firebase projects for one product/app. I wish there was a way to merge all those separate firestore collection data into one separate project?
 #### Example: 
 Project A:
 
@@ -61,7 +61,8 @@ Collection
 ```   
 
 **Assumptions Made**:
-1. The nesting of subcollection goes down only 1 level deep. Ex: Collection -> sub-collection (1 deep) 
+1. The nesting of subcollection goes down only 1 level deep. Ex: Collection -> sub-collection (1 deep)
+2. Source and Destination projects are different firebase projects. 
 
 # File Directory Structure
 ---

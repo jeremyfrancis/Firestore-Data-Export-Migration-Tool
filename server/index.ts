@@ -50,7 +50,7 @@ router.post("/migration", async (req, res) => {
         // );
         sourceFS
           .collection(coll)
-          .limit(3)
+          //.limit(3)
           .get()
           .then((collDocSnap) => {
             collDocSnap.docs.forEach(async (collDoc) => {
@@ -73,7 +73,7 @@ router.post("/migration", async (req, res) => {
               //NOTE: Step-1: First Copy Collection Documents
               //     Exception. Some documents have named document ids rather than a random name.
               //     For those documents the doc Id is constructed as doc.id + projectId
-              let tempCollDocId;
+              let tempCollDocId: string;
               switch (coll) {
                 case "config":
                   tempCollDocId = collDoc.id + "-" + sourceProjectId;
@@ -87,10 +87,17 @@ router.post("/migration", async (req, res) => {
                 case "zoom":
                   tempCollDocId = collDoc.id + "-" + sourceProjectId;
                   break;
+                case "channels":
+                  tempCollDocId = collDoc.id + "-" + sourceProjectId;
+                  break;
                 default:
                   tempCollDocId = collDoc.id;
                   break;
               }
+
+              // console.log(
+              //   "Collection is " + coll + " and doc id is " + tempCollDocId
+              // );
 
               await destFS
                 ?.collection(coll)
@@ -106,9 +113,15 @@ router.post("/migration", async (req, res) => {
                   subCollections.forEach((subCollection) => {
                     subCollection.get().then((subCollData) => {
                       subCollData.docs.forEach(async (subCollDoc) => {
+                        // console.log(
+                        //   "CollId is " +
+                        //     collDoc.id +
+                        //     " temp coll is " +
+                        //     tempCollDocId
+                        // );
                         await destFS
                           ?.collection(coll)
-                          .doc(collDoc.id)
+                          .doc(tempCollDocId)
                           .collection(subCollection.id)
                           .doc(subCollDoc.id)
                           .set(subCollDoc.data(), { merge: true });
@@ -185,7 +198,7 @@ async function getCollections(dbApp: admin.app.App): Promise<string[]> {
     .then((collections) => {
       const output: string[] = [];
       collections.forEach((coll) => {
-        //if (coll.id === "config")
+        //if (coll.id === "notifications")
         output.push(coll.id);
       });
       return output;

@@ -32,3 +32,5 @@ serviceAccountList.txt
 yarn.lock
 client/public/
 client/src/logo.svg
+client/src/components/fancyDropDown.tsx
+client/src/components/demoDD.tsx

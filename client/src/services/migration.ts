@@ -3,10 +3,12 @@ import "firebase/firestore";
 import "firebase/auth";
 import fetch from "node-fetch";
 
-import { APIROUTE, iDBList } from "./migrationData";
+import { APIROUTE, iCollection, iDBList } from "./migrationData";
 
 export const handleStartMigration = async (
   dbList: iDBList[],
+  collList: iCollection[],
+  mapUserSchema: boolean,
   destDBSAFile: File
 ) => {
   if (dbList.length === 0) return;
@@ -17,6 +19,8 @@ export const handleStartMigration = async (
 
   const payload = {
     dbNameList: dbList,
+    collList,
+    mapUserSchema,
     destDBSAFile: destDBSAFileData,
   };
 

@@ -1,3 +1,4 @@
+import firebase from "firebase";
 export interface iDBList {
   id?: number;
   projectId?: string;
@@ -8,16 +9,56 @@ export enum APIROUTE {
   "MIGRATION" = "/migration",
 }
 
-// export const collNames = [
-//   "config",
-//   "eventSlider",
-//   "more",
-//   "notifications",
-//   "pages",
-//   "possts",
-//   "scoreboard",
-//   "users",
-// ];
+export interface iCollection {
+  id?: number;
+  collectionName?: string;
+}
+
+export const getCollectionsList = () => {
+  const collections: iCollection[] = [
+    {
+      id: 0,
+      collectionName: "Select All Collections",
+    },
+    {
+      id: 1,
+      collectionName: "config",
+    },
+    {
+      id: 2,
+      collectionName: "more",
+    },
+    {
+      id: 3,
+      collectionName: "notifications",
+    },
+    {
+      id: 4,
+      collectionName: "pages",
+    },
+    {
+      id: 5,
+      collectionName: "possts",
+    },
+    {
+      id: 6,
+      collectionName: "scoreboard",
+    },
+    {
+      id: 7,
+      collectionName: "users",
+    },
+    {
+      id: 8,
+      collectionName: "emails",
+    },
+    {
+      id: 9,
+      collectionName: "email-templates",
+    },
+  ];
+  return collections;
+};
 
 export const getProdDBList = () => {
   const dbList: iDBList[] = [

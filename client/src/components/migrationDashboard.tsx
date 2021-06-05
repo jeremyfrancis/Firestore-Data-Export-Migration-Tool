@@ -3,16 +3,24 @@ import {
   handleStartMigration,
   handleTestConnection,
 } from "../services/migration";
-import { getProdDBList, iDBList } from "../services/migrationData";
+import {
+  getCollectionsList,
+  getProdDBList,
+  iCollection,
+  iDBList,
+} from "../services/migrationData";
 import FileUploader from "./fileUploader";
 
 class MigrationDashboard extends Component<any, any> {
   state = {
     dbList: getProdDBList(),
     selectedDBList: [] as iDBList[],
+    selectedColls: [] as iCollection[],
     destinationDBSAFile: {} as File,
     buttonText: "Select All",
     fileSelected: "Destination Project-ID",
+    collections: getCollectionsList(),
+    mapUserSchema: false,
   };
 
   handleSelectAll = () => {
@@ -29,6 +37,19 @@ class MigrationDashboard extends Component<any, any> {
     } else {
       this.setState({ buttonText: "Select All" });
     }
+  };
+
+  handleCollSelectAll = () => {
+    console.log("Collections length ", this.state.collections.length);
+    for (let i = 2; i <= this.state.collections.length; i++) {
+      (document.getElementById(`chk-${i - 1}`)! as HTMLInputElement).checked =
+        !(document.getElementById(`chk-${i - 1}`)! as HTMLInputElement).checked;
+
+      (document.getElementById(`chk-${i - 1}`)! as HTMLInputElement).checked
+        ? this.handleCollSelect(this.state.collections[i - 1])
+        : (this.state.selectedColls = []);
+    }
+    console.log("Select collection ", this.state.selectedColls);
   };
 
   handleCBSelect = (db: iDBList) => {
@@ -58,21 +79,20 @@ class MigrationDashboard extends Component<any, any> {
     }
   };
 
+  handleCollSelect = (collection: iCollection) => {
+    console.log("Collection is ", JSON.stringify(collection));
+    if (collection.id === 0) {
+      this.handleCollSelectAll();
+      return;
+    }
+    this.state.selectedColls.push(collection);
+  };
+
   render() {
     return (
       <main className="container text-center">
         <p
-          style={{
-            display: "flex",
-            fontSize: 40,
-            fontWeight: "bold",
-            color: "#00e096",
-            width: "100%",
-            height: "10%",
-            borderRadius: 20,
-            justifyContent: "center",
-            alignItems: "center",
-          }}
+          style={styles.header}
           className="text-center .align-middle bg-dark mt-3"
         >
           🚀 Migration Tool 🚀
@@ -160,7 +180,7 @@ class MigrationDashboard extends Component<any, any> {
                     📂
                   </span>
                   <FileUploader
-                    className="btn btn-secondary btn-sm"
+                    className="btn btn-primary btn-sm"
                     handleFile={async (item: File) =>
                       this.setState({
                         destinationDBSAFile: item,
@@ -177,37 +197,106 @@ class MigrationDashboard extends Component<any, any> {
                     disabled
                   />
                 </div>
+                <tr>
+                  <td>
+                    {this.state.collections.map((collection) => (
+                      <div className="input-group form-check-inline mb-2">
+                        <div
+                          className="input-group-text"
+                          style={
+                            collection.id === 0
+                              ? { backgroundColor: "#FFC107" }
+                              : {}
+                          }
+                        >
+                          <input
+                            className="form-check-input mt-0"
+                            type="checkbox"
+                            style={
+                              collection.id === 0 ? { color: "white" } : {}
+                            }
+                            value=""
+                            id={"chk-" + collection.id}
+                            aria-label="Checkbox for following text input"
+                            onChange={() => {
+                              this.handleCollSelect(collection);
+                            }}
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          style={
+                            collection.id === 0
+                              ? {
+                                  color: "black",
+                                  backgroundColor: "#FFC107",
+                                }
+                              : {}
+                          }
+                          className="form-control"
+                          aria-label="Text input with checkbox"
+                          value={collection.collectionName}
+                          disabled
+                        />
+                      </div>
+                    ))}
+                  </td>
+                  <td>
+                    <button
+                      onClick={() => {
+                        if (
+                          this.state.selectedDBList.length === 0 ||
+                          this.state.selectedColls.length === 0 ||
+                          !this.state.destinationDBSAFile.name
+                        ) {
+                          alert(
+                            "One of the below items is missing \n 1.Select Source DB(s) \n 2.Choose a .json file \n 3.Select a collection to migrate"
+                          );
+                        } else {
+                          handleStartMigration(
+                            this.state.selectedDBList,
+                            this.state.selectedColls,
+                            this.state.mapUserSchema,
+                            this.state.destinationDBSAFile
+                          );
+                        }
+                      }}
+                      className="btn btn-primary ms-2"
+                    >
+                      Start Migration
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-warning ms-2"
+                      onClick={() => {
+                        const dbList = handleTestConnection(this.state.dbList);
+                        this.setState({ dbList });
+                      }}
+                    >
+                      Test Connection(s)
+                    </button>
 
-                <button
-                  onClick={() => {
-                    if (
-                      this.state.selectedDBList.length === 0 ||
-                      !this.state.destinationDBSAFile.name
-                    ) {
-                      alert(
-                        "Please select at least one item from the Source DB list & also choose a .json file before starting migration."
-                      );
-                    } else {
-                      handleStartMigration(
-                        this.state.selectedDBList,
-                        this.state.destinationDBSAFile
-                      );
-                    }
-                  }}
-                  className="btn btn-primary"
-                >
-                  Start Migration
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-warning m-2"
-                  onClick={() => {
-                    const dbList = handleTestConnection(this.state.dbList);
-                    this.setState({ dbList });
-                  }}
-                >
-                  Test Connection(s)
-                </button>
+                    <div className="form-check form-switch form-control-lg ms-2 border border-secondary">
+                      <input
+                        className="form-check-input m-1"
+                        type="checkbox"
+                        id="mapUserSchema"
+                        checked={this.state.mapUserSchema}
+                        onChange={() => {
+                          this.setState({
+                            mapUserSchema: !this.state.mapUserSchema,
+                          });
+                        }}
+                      />
+                      <label
+                        className="form-check-label ms-1"
+                        htmlFor="flexSwitchCheckDefault"
+                      >
+                        Map User Schema to Web
+                      </label>
+                    </div>
+                  </td>
+                </tr>
               </td>
             </tr>
           </tbody>
@@ -217,4 +306,21 @@ class MigrationDashboard extends Component<any, any> {
   }
 }
 
+interface StyleSheet {
+  [key: string]: React.CSSProperties;
+}
+
+const styles: StyleSheet = {
+  header: {
+    display: "flex",
+    fontSize: 40,
+    fontWeight: "bold",
+    color: "#00e096",
+    width: "100%",
+    height: "10%",
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+};
 export default MigrationDashboard;

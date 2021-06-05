@@ -34,3 +34,5 @@ client/public/
 client/src/logo.svg
 client/src/components/fancyDropDown.tsx
 client/src/components/demoDD.tsx
+server/test.json
+server/test2.json

@@ -32,6 +32,7 @@ export interface WebUserSchema {
   /** @deprecated maybe? switch to roles */
   banned?: boolean;
   team?: string;
+  oldMobileSchemaData: any;
 }
 
 export enum FRBS_ROLE {

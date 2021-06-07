@@ -56,7 +56,7 @@ router.post("/migration", async (req, res) => {
 
     if (sourceDBApp !== undefined) {
       const collNames: string[] = await getCollections(sourceDBApp, collList);
-      console.log("Total Collections " + JSON.stringify(collNames));
+      //console.log("Total Collections " + JSON.stringify(collNames));
 
       const sourceFS = sourceDBApp.firestore();
       collNames.forEach((coll) => {
@@ -65,17 +65,17 @@ router.post("/migration", async (req, res) => {
         // );
         sourceFS
           .collection(coll)
-          .limit(8)
-          .where("email", "==", "mankar.saurabh@gmail.com")
+          //.limit(8)
+          //.where("email", "==", "mankar.saurabh@gmail.com")
           .get()
           .then((collDocSnap) => {
             collDocSnap.docs.forEach(async (collDoc) => {
               let outCollData: any;
 
-              console.log("Map User Schema is ", mapUserSchema);
+              //console.log("Map User Schema is ", mapUserSchema);
 
               if (coll === "users" && mapUserSchema) {
-                console.log("Mapping data for ", collDoc.data().email);
+                //console.log("Mapping data for ", collDoc.data().email);
 
                 outCollData = {
                   ...mapUserSchemaToWeb(collDoc),
@@ -164,9 +164,9 @@ router.post("/migration", async (req, res) => {
                 });
 
               if (coll === "users" && mapUserSchema) {
-                console.log("Making UID Updates");
+                // console.log("Making UID Updates");
                 updateUsersUID(outCollData, sourceDBApp, destDBApp).then(() => {
-                  console.log("Completed UID Update");
+                  //console.log("Completed UID Update");
                 });
               }
             });
@@ -261,20 +261,46 @@ function mapUserSchemaToWeb(
     theme: THEME.LIGHT,
     _id: collDoc.id,
     personali: {
-      displayName: mobileUser.name,
-      email: mobileUser.email,
-      phoneNumber: mobileUser.phoneNumber,
-      photoURL: mobileUser.profileImage,
+      displayName: mobileUser.name ? mobileUser.name : "",
+      email: mobileUser.email ? mobileUser.email : "",
+      phoneNumber: mobileUser.phoneNumber ? mobileUser.phoneNumber : "",
+      photoURL: mobileUser.profileImage ? mobileUser.profileImage : "",
     },
-    roles: [mobileUser.admin ? FRBS_ROLE.ADMIN : FRBS_ROLE.NEWBIE],
+    roles: [
+      mobileUser.admin
+        ? FRBS_ROLE.ADMIN
+        : mobileUser.banned
+        ? FRBS_ROLE.BANNED
+        : FRBS_ROLE.NEWBIE,
+    ],
     growth: {
+      allLevelsCompleted: mobileUser.allLevelsCompleted
+        ? mobileUser.allLevelsCompleted
+        : {},
+      levels: mobileUser.levels ? mobileUser.levels : {},
+      listBuilder: {
+        lists: mobileUser.listBuilder?.lists
+          ? mobileUser.listBuilder?.lists
+          : [],
+        shareTo: mobileUser.listBuilder?.shareTo
+          ? mobileUser.listBuilder?.shareTo
+          : "",
+      },
+      team: collDoc.data().team ? collDoc.data().team : "",
+    },
+    //NOTE: Backing up data in a object rather than deleting it.
+    oldMobileSchemaData: {
+      uid: mobileUser.uid,
+      email: mobileUser.email,
+      listBuilder: mobileUser.listBuilder,
       allLevelsCompleted: mobileUser.allLevelsCompleted,
       levels: mobileUser.levels,
-      listBuilder: {
-        lists: mobileUser.listBuilder?.lists,
-        shareTo: mobileUser.listBuilder?.shareTo,
-      },
-      team: collDoc.data().team,
+      profileImage: mobileUser.profileImage,
+      phoneNumber: mobileUser.phoneNumber,
+      name: mobileUser.name,
+      team: mobileUser.team,
+      admin: mobileUser.admin,
+      banned: mobileUser.banned,
     },
   };
 
@@ -287,9 +313,11 @@ function mapUserSchemaToWeb(
   delete mobileUser.phoneNumber;
   delete mobileUser.name;
   delete mobileUser.team;
+  delete mobileUser.admin;
+  delete mobileUser.banned;
 
   webUser = { ...webUser, ...mobileUser };
-  console.log(webUser);
+  //console.log(webUser);
   return webUser;
 }
 
@@ -303,35 +331,39 @@ async function updateUsersUID(
   const admin = destDBApp;
 
   const email = outCollData.personali.email ? outCollData.personali.email : "";
-  console.log("Email is ", email);
+  //console.log("Email is ", email);
 
   if (email === "" || email === undefined) return;
 
-  console.log("Inside updateUsersUID");
+  //console.log("Inside updateUsersUID");
   let newUserOverrides = {
     uid: outCollData._id,
   };
   let oldUser: any;
   try {
-    console.log("Starting update for user with email:", email);
+    //console.log("Starting update for user with email:", email);
     oldUser = await admin.auth().getUserByEmail(email!);
     //console.log("Old user found:", oldUser);
 
-    if (oldUser.uid === outCollData._id) {
-      console.log(
-        "User " +
-          email +
-          " already exists in the destination DB with UID " +
-          outCollData._id
-      );
+    if (oldUser.uid === outCollData._id || oldUser.email === email) {
+      // console.log(
+      //   "User " +
+      //     email +
+      //     " already exists in the destination DB with UID " +
+      //     outCollData._id
+      // );
       return;
     }
     await admin.auth().deleteUser(oldUser.uid);
-    console.log("Old user deleted.");
+    //console.log("Old user deleted.");
   } catch (e) {
-    console.log("User not found in destination DB ", email);
-    console.log("Copying the user data from source DB");
-    oldUser = await sourceDBApp?.auth().getUserByEmail(email);
+    //console.log("User not found in destination DB ", email);
+    //console.log("Copying the user data from source DB");
+    try {
+      oldUser = await sourceDBApp?.auth().getUserByEmail(email);
+    } catch (e) {
+      return;
+    }
   }
 
   let dataToTransfer_keys = [
@@ -350,7 +382,10 @@ async function updateUsersUID(
   }
   Object.assign(newUserData, newUserOverrides);
   //console.log("New user data ready: ", newUserData);
-
-  let newUser = await admin.auth().createUser(newUserData);
-  console.log("New user created ");
+  try {
+    let newUser = await admin.auth().createUser(newUserData);
+  } catch (e) {
+    return;
+  }
+  //console.log("New user created ");
 }

@@ -1,13 +1,16 @@
 import express from "express";
 import bodyParser from "express";
 import * as admin from "firebase-admin";
+import { firestore } from "firebase-admin";
 
 import {
   FRBS_ROLE,
   iCollection,
   iDBList,
+  MobileScoreboardSchema,
   MobileUserSchema,
   THEME,
+  WebScoreboardSchema,
   WebUserSchema,
 } from "./migrationSchema";
 
@@ -29,11 +32,13 @@ router.post("/migration", async (req, res) => {
     dbNameList,
     collList,
     mapUserSchema,
+    mapScoreboardSchema,
     destDBSAFile,
   }: {
     dbNameList: iDBList[];
     collList: iCollection[];
     mapUserSchema: boolean;
+    mapScoreboardSchema: boolean;
     destDBSAFile: any;
   } = req.body;
 
@@ -61,7 +66,10 @@ router.post("/migration", async (req, res) => {
       const sourceFS = sourceDBApp.firestore();
       collNames.forEach((coll) => {
         // console.log(
-        //   "Starting data move for " + dbName + " and collection " + coll
+        //   "Starting data move for " +
+        //     sourceProjectId +
+        //     " and collection " +
+        //     coll
         // );
         sourceFS
           .collection(coll)
@@ -86,6 +94,13 @@ router.post("/migration", async (req, res) => {
                   ...collDoc.data(),
                   _teamId: sourceProjectId,
                 };
+              }
+
+              let newSBData;
+
+              if (coll === "scoreboard" && mapScoreboardSchema) {
+                if (collDoc.id !== "scores") return;
+                newSBData = mapSBSchemaToWeb(collDoc);
               }
 
               //console.log("OutCollData is ", JSON.stringify(outCollData));
@@ -113,7 +128,7 @@ router.post("/migration", async (req, res) => {
                   tempCollDocId = collDoc.id + "-" + sourceProjectId;
                   break;
                 case "scoreboard":
-                  tempCollDocId = collDoc.id + "-" + sourceProjectId;
+                  tempCollDocId = "";
                   break;
                 case "zoom":
                   tempCollDocId = collDoc.id + "-" + sourceProjectId;
@@ -130,38 +145,55 @@ router.post("/migration", async (req, res) => {
               //   "Collection is " + coll + " and doc id is " + tempCollDocId
               // );
               // console.log("outCollData saved is ", JSON.stringify(outCollData));
-
-              await destFS
-                ?.collection(coll)
-                .doc(tempCollDocId)
-                .set(outCollData);
+              if (tempCollDocId === "" && coll === "scoreboard" && newSBData) {
+                newSBData.forEach(async (scoreboard) => {
+                  await destFS
+                    ?.collection(coll)
+                    .add({ _teamId: sourceProjectId, ...scoreboard })
+                    .then(async function (newSBID) {
+                      await destFS
+                        .collection(coll)
+                        .doc(newSBID.id)
+                        .update({
+                          _sbid: newSBID.id.replace("/scoreboard/", ""),
+                        });
+                    });
+                });
+              } else {
+                await destFS
+                  ?.collection(coll)
+                  .doc(tempCollDocId)
+                  .set(outCollData, { merge: true });
+              }
 
               //NOTE: Step-2: Then Copy all subcollection documents of the root Collection Document.
-              sourceFS
-                .collection(coll)
-                .doc(collDoc.id)
-                .listCollections()
-                .then((subCollections) => {
-                  subCollections.forEach((subCollection) => {
-                    subCollection.get().then((subCollData) => {
-                      subCollData.docs.forEach(async (subCollDoc) => {
-                        // console.log(
-                        //   "CollId is " +
-                        //     collDoc.id +
-                        //     " temp coll is " +
-                        //     tempCollDocId
-                        // );
+              if (coll !== "scoreboard") {
+                sourceFS
+                  .collection(coll)
+                  .doc(collDoc.id)
+                  .listCollections()
+                  .then((subCollections) => {
+                    subCollections.forEach((subCollection) => {
+                      subCollection.get().then((subCollData) => {
+                        subCollData.docs.forEach(async (subCollDoc) => {
+                          // console.log(
+                          //   "CollId is " +
+                          //     collDoc.id +
+                          //     " temp coll is " +
+                          //     tempCollDocId
+                          // );
 
-                        await destFS
-                          ?.collection(coll)
-                          .doc(tempCollDocId)
-                          .collection(subCollection.id)
-                          .doc(subCollDoc.id)
-                          .set(subCollDoc.data(), { merge: true });
+                          await destFS
+                            ?.collection(coll)
+                            .doc(tempCollDocId)
+                            .collection(subCollection.id)
+                            .doc(subCollDoc.id)
+                            .set(subCollDoc.data(), { merge: true });
+                        });
                       });
                     });
                   });
-                });
+              }
 
               if (coll === "users" && mapUserSchema) {
                 // console.log("Making UID Updates");
@@ -170,6 +202,7 @@ router.post("/migration", async (req, res) => {
                 });
               }
             });
+            //
           });
       });
       //#endregion
@@ -251,6 +284,35 @@ async function getCollections(
     });
 
   return output;
+}
+
+interface customMobileSBSchema {
+  title: {
+    data: MobileScoreboardSchema;
+  };
+}
+function mapSBSchemaToWeb(
+  collDoc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
+) {
+  console.log("collDoc.id :>> ", collDoc.id);
+
+  let mobileSchemaData = Object.values(<MobileScoreboardSchema>collDoc.data());
+  let webSchemaData: WebScoreboardSchema[] = [];
+
+  mobileSchemaData.map((mSB: MobileScoreboardSchema) => {
+    let tempWSD: WebScoreboardSchema = {
+      _sbid: "",
+      title: mSB.title,
+      subtitle: mSB.subtitle ? mSB.subtitle : "",
+      people: mSB.people,
+      position: mSB.position,
+      createdAt: firestore.Timestamp.fromDate(new Date()),
+    };
+    //console.log("tempWSD :>> ", tempWSD);
+    webSchemaData.push(tempWSD);
+  });
+
+  return webSchemaData;
 }
 
 function mapUserSchemaToWeb(

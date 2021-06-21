@@ -5,12 +5,22 @@ import fetch from "node-fetch";
 
 import { APIROUTE, iCollection, iDBList } from "./migrationData";
 
-export const handleStartMigration = async (
-  dbList: iDBList[],
-  collList: iCollection[],
-  mapUserSchema: boolean,
-  destDBSAFile: File
-) => {
+interface migrationSchema {
+  selectedDBList: iDBList[];
+  selectedColls: iCollection[];
+  mapUserSchema: boolean;
+  mapScoreboardSchema: boolean;
+  destinationDBSAFile: File;
+}
+
+export const handleStartMigration = async (state: migrationSchema) => {
+  const {
+    selectedDBList: dbList,
+    selectedColls: collList,
+    mapUserSchema,
+    mapScoreboardSchema,
+    destinationDBSAFile: destDBSAFile,
+  } = state;
   if (dbList.length === 0) return;
 
   console.log("Beginning migration");
@@ -21,6 +31,7 @@ export const handleStartMigration = async (
     dbNameList: dbList,
     collList,
     mapUserSchema,
+    mapScoreboardSchema,
     destDBSAFile: destDBSAFileData,
   };
 

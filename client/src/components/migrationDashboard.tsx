@@ -21,6 +21,7 @@ class MigrationDashboard extends Component<any, any> {
     fileSelected: "Destination Project-ID",
     collections: getCollectionsList(),
     mapUserSchema: false,
+    mapScoreboardSchema: false,
   };
 
   handleSelectAll = () => {
@@ -253,12 +254,7 @@ class MigrationDashboard extends Component<any, any> {
                             "One of the below items is missing \n 1.Select Source DB(s) \n 2.Choose a .json file \n 3.Select a collection to migrate"
                           );
                         } else {
-                          handleStartMigration(
-                            this.state.selectedDBList,
-                            this.state.selectedColls,
-                            this.state.mapUserSchema,
-                            this.state.destinationDBSAFile
-                          );
+                          handleStartMigration(this.state);
                         }
                       }}
                       className="btn btn-primary ms-2"
@@ -275,8 +271,12 @@ class MigrationDashboard extends Component<any, any> {
                     >
                       Test Connection(s)
                     </button>
+                    <br />
+                    <div className="form-check form-switch form-control-lg ms-2 border border-secondary text-start">
+                      <p className="fs-3 text-sm text-primary">
+                        {"Schema Mapping"}
+                      </p>
 
-                    <div className="form-check form-switch form-control-lg ms-2 border border-secondary">
                       <input
                         className="form-check-input m-1"
                         type="checkbox"
@@ -293,6 +293,25 @@ class MigrationDashboard extends Component<any, any> {
                         htmlFor="flexSwitchCheckDefault"
                       >
                         Map User Schema to Web
+                      </label>
+                      <br />
+                      <input
+                        className="form-check-input m-1"
+                        type="checkbox"
+                        id="mapScoreboardSchema"
+                        checked={this.state.mapScoreboardSchema}
+                        onChange={() => {
+                          this.setState({
+                            mapScoreboardSchema:
+                              !this.state.mapScoreboardSchema,
+                          });
+                        }}
+                      />
+                      <label
+                        className="form-check-label ms-1"
+                        htmlFor="flexSwitchCheckDefault"
+                      >
+                        Map Scoreboard Schema to Web
                       </label>
                     </div>
                   </td>

@@ -133,3 +133,32 @@ export interface MobileUserSchema {
   team?: string;
 }
 //#endregion
+
+export interface MobileScoreboardSchema {
+  title: string;
+  subtitle?: string;
+  id: string;
+  position: number;
+  people: dMobileScore[];
+}
+
+export interface dMobileScore {
+  uid: string;
+  name: string;
+  score: number;
+}
+
+export interface WebScoreboardSchema {
+  _sbid: string;
+  title: string;
+  subtitle?: string;
+  position: number;
+  people: dWebScore[];
+  createdAt?: firebase.firestore.FieldValue;
+}
+
+export interface dWebScore {
+  uid: string;
+  name: string;
+  score: number;
+}

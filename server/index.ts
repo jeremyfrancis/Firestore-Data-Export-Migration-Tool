@@ -73,13 +73,13 @@ router.post("/migration", async (req, res) => {
         // );
         sourceFS
           .collection(coll)
-          //.limit(8)
+          //.limit(1)
           //.where("email", "==", "mankar.saurabh@gmail.com")
           .get()
           .then((collDocSnap) => {
             collDocSnap.docs.forEach(async (collDoc) => {
               let outCollData: any;
-
+              let tempProjectId = sourceProjectId;
               //console.log("Map User Schema is ", mapUserSchema);
 
               if (coll === "users" && mapUserSchema) {
@@ -87,12 +87,16 @@ router.post("/migration", async (req, res) => {
 
                 outCollData = {
                   ...mapUserSchemaToWeb(collDoc),
-                  _teamId: sourceProjectId,
+                  _teamId: collDoc.data()._teamId
+                    ? collDoc.data()._teamId
+                    : tempProjectId,
                 };
               } else {
                 outCollData = {
                   ...collDoc.data(),
-                  _teamId: sourceProjectId,
+                  _teamId: collDoc.data()._teamId
+                    ? collDoc.data()._teamId
+                    : tempProjectId,
                 };
               }
 
@@ -101,6 +105,7 @@ router.post("/migration", async (req, res) => {
               if (coll === "scoreboard" && mapScoreboardSchema) {
                 if (collDoc.id !== "scores") return;
                 newSBData = mapSBSchemaToWeb(collDoc);
+                //console.log("newSBData :>> ", newSBData);
               }
 
               //console.log("OutCollData is ", JSON.stringify(outCollData));
@@ -141,10 +146,8 @@ router.post("/migration", async (req, res) => {
                   break;
               }
 
-              // console.log(
-              //   "Collection is " + coll + " and doc id is " + tempCollDocId
-              // );
-              // console.log("outCollData saved is ", JSON.stringify(outCollData));
+              const tempColl = coll === "pages" ? "PAGES" : coll;
+
               if (tempCollDocId === "" && coll === "scoreboard" && newSBData) {
                 newSBData.forEach(async (scoreboard) => {
                   await destFS
@@ -161,7 +164,7 @@ router.post("/migration", async (req, res) => {
                 });
               } else {
                 await destFS
-                  ?.collection(coll)
+                  ?.collection(tempColl)
                   .doc(tempCollDocId)
                   .set(outCollData, { merge: true });
               }
@@ -184,7 +187,7 @@ router.post("/migration", async (req, res) => {
                           // );
 
                           await destFS
-                            ?.collection(coll)
+                            ?.collection(tempColl)
                             .doc(tempCollDocId)
                             .collection(subCollection.id)
                             .doc(subCollDoc.id)
@@ -278,6 +281,7 @@ async function getCollections(
       const output: string[] = [];
       collections.forEach((coll) => {
         if (collList.find((x) => x.collectionName === coll.id))
+          //if (coll.id === "users")
           output.push(coll.id);
       });
       return output;
@@ -294,7 +298,7 @@ interface customMobileSBSchema {
 function mapSBSchemaToWeb(
   collDoc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
 ) {
-  console.log("collDoc.id :>> ", collDoc.id);
+  //console.log("collDoc.id :>> ", collDoc.id);
 
   let mobileSchemaData = Object.values(<MobileScoreboardSchema>collDoc.data());
   let webSchemaData: WebScoreboardSchema[] = [];
@@ -352,17 +356,19 @@ function mapUserSchemaToWeb(
     },
     //NOTE: Backing up data in a object rather than deleting it.
     oldMobileSchemaData: {
-      uid: mobileUser.uid,
-      email: mobileUser.email,
-      listBuilder: mobileUser.listBuilder,
-      allLevelsCompleted: mobileUser.allLevelsCompleted,
-      levels: mobileUser.levels,
-      profileImage: mobileUser.profileImage,
-      phoneNumber: mobileUser.phoneNumber,
-      name: mobileUser.name,
-      team: mobileUser.team,
-      admin: mobileUser.admin,
-      banned: mobileUser.banned,
+      uid: mobileUser.uid ? mobileUser.uid : "",
+      email: mobileUser.email ? mobileUser.email : "",
+      listBuilder: mobileUser.listBuilder ? mobileUser.listBuilder : "",
+      allLevelsCompleted: mobileUser.allLevelsCompleted
+        ? mobileUser.allLevelsCompleted
+        : "",
+      levels: mobileUser.levels ? mobileUser.levels : "",
+      profileImage: mobileUser.profileImage ? mobileUser.profileImage : "",
+      phoneNumber: mobileUser.phoneNumber ? mobileUser.phoneNumber : "",
+      name: mobileUser.name ? mobileUser.name : "",
+      team: mobileUser.team ? mobileUser.team : "",
+      admin: mobileUser.admin ? mobileUser.admin : false,
+      banned: mobileUser.banned ? mobileUser.banned : false,
     },
   };
 
@@ -403,24 +409,13 @@ async function updateUsersUID(
   };
   let oldUser: any;
   try {
-    //console.log("Starting update for user with email:", email);
     oldUser = await admin.auth().getUserByEmail(email!);
-    //console.log("Old user found:", oldUser);
 
     if (oldUser.uid === outCollData._id || oldUser.email === email) {
-      // console.log(
-      //   "User " +
-      //     email +
-      //     " already exists in the destination DB with UID " +
-      //     outCollData._id
-      // );
       return;
     }
     await admin.auth().deleteUser(oldUser.uid);
-    //console.log("Old user deleted.");
   } catch (e) {
-    //console.log("User not found in destination DB ", email);
-    //console.log("Copying the user data from source DB");
     try {
       oldUser = await sourceDBApp?.auth().getUserByEmail(email);
     } catch (e) {
@@ -443,7 +438,6 @@ async function updateUsersUID(
     newUserData[key] = oldUser[key];
   }
   Object.assign(newUserData, newUserOverrides);
-  //console.log("New user data ready: ", newUserData);
   try {
     let newUser = await admin.auth().createUser(newUserData);
   } catch (e) {

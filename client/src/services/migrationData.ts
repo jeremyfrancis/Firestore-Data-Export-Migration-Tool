@@ -26,35 +26,39 @@ export const getCollectionsList = () => {
     },
     {
       id: 2,
-      collectionName: "more",
-    },
-    {
-      id: 3,
-      collectionName: "notifications",
-    },
-    {
-      id: 4,
-      collectionName: "pages",
-    },
-    {
-      id: 5,
-      collectionName: "possts",
-    },
-    {
-      id: 6,
-      collectionName: "scoreboard",
-    },
-    {
-      id: 7,
-      collectionName: "users",
-    },
-    {
-      id: 8,
       collectionName: "emails",
     },
     {
-      id: 9,
+      id: 3,
       collectionName: "email-templates",
+    },
+    {
+      id: 4,
+      collectionName: "email-schedules",
+    },
+    {
+      id: 5,
+      collectionName: "more",
+    },
+    {
+      id: 6,
+      collectionName: "notifications",
+    },
+    {
+      id: 7,
+      collectionName: "pages",
+    },
+    {
+      id: 8,
+      collectionName: "possts",
+    },
+    {
+      id: 9,
+      collectionName: "scoreboard",
+    },
+    {
+      id: 10,
+      collectionName: "users",
     },
   ];
   return collections;
@@ -365,6 +369,11 @@ export const getProdDBList = () => {
     {
       id: 61,
       projectId: "xtreme-nation-service-account.json",
+      connectionSuccess: "",
+    },
+    {
+      id: 62,
+      projectId: "primr-exp-service-account.json",
       connectionSuccess: "",
     },
   ];

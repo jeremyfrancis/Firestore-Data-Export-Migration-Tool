@@ -1,9 +1,9 @@
-import express from "express";
-import bodyParser from "express";
+import { default as bodyParser, default as express } from "express";
 import * as admin from "firebase-admin";
 import { firestore } from "firebase-admin";
-
 import {
+  ContactGroupSchema,
+  dContactSuggestion,
   FRBS_ROLE,
   iCollection,
   iDBList,
@@ -33,12 +33,14 @@ router.post("/migration", async (req, res) => {
     collList,
     mapUserSchema,
     mapScoreboardSchema,
+    clone,
     destDBSAFile,
   }: {
     dbNameList: iDBList[];
     collList: iCollection[];
     mapUserSchema: boolean;
     mapScoreboardSchema: boolean;
+    clone: boolean;
     destDBSAFile: any;
   } = req.body;
 
@@ -65,26 +67,24 @@ router.post("/migration", async (req, res) => {
 
       const sourceFS = sourceDBApp.firestore();
       collNames.forEach((coll) => {
-        // console.log(
-        //   "Starting data move for " +
-        //     sourceProjectId +
-        //     " and collection " +
-        //     coll
-        // );
+        console.log(
+          "Starting data move for " +
+            sourceProjectId +
+            " and collection " +
+            coll
+        );
         sourceFS
           .collection(coll)
           //.limit(1)
+          //TODO COMMENT THIS AFTER TESTING
           //.where("email", "==", "mankar.saurabh@gmail.com")
           .get()
           .then((collDocSnap) => {
             collDocSnap.docs.forEach(async (collDoc) => {
               let outCollData: any;
               let tempProjectId = sourceProjectId;
-              //console.log("Map User Schema is ", mapUserSchema);
 
               if (coll === "users" && mapUserSchema) {
-                //console.log("Mapping data for ", collDoc.data().email);
-
                 outCollData = {
                   ...mapUserSchemaToWeb(collDoc),
                   _teamId: collDoc.data()._teamId
@@ -101,14 +101,11 @@ router.post("/migration", async (req, res) => {
               }
 
               let newSBData;
-
               if (coll === "scoreboard" && mapScoreboardSchema) {
                 if (collDoc.id !== "scores") return;
                 newSBData = mapSBSchemaToWeb(collDoc);
-                //console.log("newSBData :>> ", newSBData);
+                console.log(JSON.stringify(newSBData));
               }
-
-              //console.log("OutCollData is ", JSON.stringify(outCollData));
 
               //NOTE: Copy Source Collection Document to same collection in Destination ("pages" to "pages", "users" to "users" )
               /*NOTE: If you're not sure whether the document exists, pass the option to merge the new data 
@@ -127,19 +124,27 @@ router.post("/migration", async (req, res) => {
               let tempCollDocId: string;
               switch (coll) {
                 case "config":
-                  tempCollDocId = collDoc.id + "-" + sourceProjectId;
+                  tempCollDocId = clone
+                    ? collDoc.id
+                    : collDoc.id + "-" + sourceProjectId;
                   break;
                 case "notifications":
-                  tempCollDocId = collDoc.id + "-" + sourceProjectId;
+                  tempCollDocId = clone
+                    ? collDoc.id
+                    : collDoc.id + "-" + sourceProjectId;
                   break;
                 case "scoreboard":
                   tempCollDocId = "";
                   break;
                 case "zoom":
-                  tempCollDocId = collDoc.id + "-" + sourceProjectId;
+                  tempCollDocId = clone
+                    ? collDoc.id
+                    : collDoc.id + "-" + sourceProjectId;
                   break;
                 case "channels":
-                  tempCollDocId = collDoc.id + "-" + sourceProjectId;
+                  tempCollDocId = clone
+                    ? collDoc.id
+                    : collDoc.id + "-" + sourceProjectId;
                   break;
                 default:
                   tempCollDocId = collDoc.id;
@@ -152,7 +157,12 @@ router.post("/migration", async (req, res) => {
                 newSBData.forEach(async (scoreboard) => {
                   await destFS
                     ?.collection(coll)
-                    .add({ _teamId: sourceProjectId, ...scoreboard })
+                    .add({
+                      _teamId: collDoc.data()._teamId
+                        ? collDoc.data()._teamId
+                        : sourceProjectId,
+                      ...scoreboard,
+                    })
                     .then(async function (newSBID) {
                       await destFS
                         .collection(coll)
@@ -163,10 +173,43 @@ router.post("/migration", async (req, res) => {
                     });
                 });
               } else {
+                //NOTE:We are moving defaultLists to code instead of firestore
+                if (tempCollDocId.includes("variable")) {
+                  delete outCollData.listBuilder;
+                }
                 await destFS
                   ?.collection(tempColl)
                   .doc(tempCollDocId)
                   .set(outCollData, { merge: true });
+
+                //TODO For Web User, move the listBuilder from MobileUserSchema to a subcollection called contact-groups and contacts in WebUser document.
+                if (tempColl === "users") {
+                  const contactGroupDocs: ContactGroupSchema[] =
+                    mapListBuilderToContactGroups(collDoc);
+                  const listOfContacts: dContactSuggestion[] =
+                    mapListBuilderToContacts(collDoc);
+
+                  const destBatch = destDBApp?.firestore().batch();
+                  contactGroupDocs.forEach((cgData) => {
+                    const docRef = destFS
+                      ?.collection(tempColl)
+                      .doc(tempCollDocId)
+                      .collection("contact-groups")
+                      .doc(cgData._id);
+                    if (docRef) destBatch?.set(docRef, cgData, { merge: true });
+                  });
+
+                  listOfContacts.forEach((contactData) => {
+                    const docRef = destFS
+                      ?.collection(tempColl)
+                      .doc(tempCollDocId)
+                      .collection("contacts")
+                      .doc(contactData._cid);
+                    if (docRef)
+                      destBatch?.set(docRef, contactData, { merge: true });
+                  });
+                  await destBatch?.commit();
+                }
               }
 
               //NOTE: Step-2: Then Copy all subcollection documents of the root Collection Document.
@@ -179,13 +222,6 @@ router.post("/migration", async (req, res) => {
                     subCollections.forEach((subCollection) => {
                       subCollection.get().then((subCollData) => {
                         subCollData.docs.forEach(async (subCollDoc) => {
-                          // console.log(
-                          //   "CollId is " +
-                          //     collDoc.id +
-                          //     " temp coll is " +
-                          //     tempCollDocId
-                          // );
-
                           await destFS
                             ?.collection(tempColl)
                             .doc(tempCollDocId)
@@ -310,6 +346,7 @@ function mapSBSchemaToWeb(
       subtitle: mSB.subtitle ? mSB.subtitle : "",
       people: mSB.people,
       position: mSB.position,
+      id: mSB.id,
       createdAt: firestore.Timestamp.fromDate(new Date()),
     };
     //console.log("tempWSD :>> ", tempWSD);
@@ -344,21 +381,13 @@ function mapUserSchemaToWeb(
         ? mobileUser.allLevelsCompleted
         : {},
       levels: mobileUser.levels ? mobileUser.levels : {},
-      listBuilder: {
-        lists: mobileUser.listBuilder?.lists
-          ? mobileUser.listBuilder?.lists
-          : [],
-        shareTo: mobileUser.listBuilder?.shareTo
-          ? mobileUser.listBuilder?.shareTo
-          : "",
-      },
       team: collDoc.data().team ? collDoc.data().team : "",
     },
     //NOTE: Backing up data in a object rather than deleting it.
     oldMobileSchemaData: {
       uid: mobileUser.uid ? mobileUser.uid : "",
       email: mobileUser.email ? mobileUser.email : "",
-      listBuilder: mobileUser.listBuilder ? mobileUser.listBuilder : "",
+      listBuilder: "",
       allLevelsCompleted: mobileUser.allLevelsCompleted
         ? mobileUser.allLevelsCompleted
         : "",
@@ -444,4 +473,80 @@ async function updateUsersUID(
     return;
   }
   //console.log("New user created ");
+}
+function mapListBuilderToContactGroups(
+  collDoc: firestore.QueryDocumentSnapshot<firestore.DocumentData>
+): ContactGroupSchema[] {
+  const mobileData = <MobileUserSchema>collDoc.data();
+  const results: ContactGroupSchema[] = [];
+  const lists = mobileData.listBuilder?.lists
+    ? mobileData.listBuilder?.lists
+    : [];
+  if (lists.length > 0) {
+    lists.forEach((list) => {
+      let tempData: ContactGroupSchema = <ContactGroupSchema>{};
+      tempData._id = list.id === "Build My List" ? "BML" : list.id;
+      tempData.groupType = "list";
+      tempData.name = list.title;
+      tempData.contacts = tempData.contacts ? tempData.contacts : [];
+      list.contacts.forEach((contact) => {
+        tempData.contacts.push(contact.recordID);
+      });
+      tempData.shareTo = mobileData.listBuilder?.shareTo
+        ? mobileData.listBuilder.shareTo
+        : [];
+      results.push(tempData);
+    });
+    //console.log("results in mapLB TO CG :>> ", JSON.stringify(results));
+  }
+  return results;
+}
+
+function mapListBuilderToContacts(
+  collDoc: firestore.QueryDocumentSnapshot<firestore.DocumentData>
+): dContactSuggestion[] {
+  const mobileData = <MobileUserSchema>collDoc.data();
+  const results: dContactSuggestion[] = [];
+  const lists = mobileData.listBuilder?.lists
+    ? mobileData.listBuilder?.lists
+    : [];
+  if (lists.length > 0) {
+    lists.forEach((list) => {
+      list.contacts.forEach((contact) => {
+        let tempData: dContactSuggestion = <dContactSuggestion>{};
+        tempData._cid = contact.recordID;
+        (tempData.displayName =
+          contact.givenName + " " + contact.familyName
+            ? contact.givenName + " " + contact.familyName
+            : ""),
+          (tempData.phoneNumbers = tempData.phoneNumbers
+            ? tempData.phoneNumbers
+            : []);
+        contact.phoneNumbers.forEach((phoneNumber, index) => {
+          tempData.phoneNumbers.push({
+            ...phoneNumber,
+            id: index.toString(),
+          });
+        });
+        tempData.email =
+          contact.emailAddresses && contact.emailAddresses.length > 0
+            ? contact.emailAddresses[0].email
+            : "";
+        tempData.profileImage = contact.hasThumbnail
+          ? contact.thumbnailPath
+          : "";
+        tempData._uid = "";
+        tempData.pointers = "";
+        tempData.points = [];
+        tempData.listId = list.id === "Build My List" ? "BML" : list.id;
+        tempData.lanePositionId = "0:0";
+        results.push(tempData);
+      });
+    });
+  }
+  // console.log(
+  //   "results after extracting contacts :>> ",
+  //   JSON.stringify(results)
+  // );
+  return results;
 }

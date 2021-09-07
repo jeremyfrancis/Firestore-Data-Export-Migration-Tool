@@ -22,6 +22,7 @@ class MigrationDashboard extends Component<any, any> {
     collections: getCollectionsList(),
     mapUserSchema: false,
     mapScoreboardSchema: false,
+    clone: false,
   };
 
   handleSelectAll = () => {
@@ -48,7 +49,7 @@ class MigrationDashboard extends Component<any, any> {
 
       (document.getElementById(`chk-${i - 1}`)! as HTMLInputElement).checked
         ? this.handleCollSelect(this.state.collections[i - 1])
-        : (this.state.selectedColls = []);
+        : this.setState({ selectedColls: [] });
     }
     console.log("Select collection ", this.state.selectedColls);
   };
@@ -201,7 +202,10 @@ class MigrationDashboard extends Component<any, any> {
                 <tr>
                   <td>
                     {this.state.collections.map((collection) => (
-                      <div className="input-group form-check-inline mb-2">
+                      <div
+                        key={collection.id}
+                        className="input-group form-check-inline mb-2"
+                      >
                         <div
                           className="input-group-text"
                           style={
@@ -313,6 +317,31 @@ class MigrationDashboard extends Component<any, any> {
                       >
                         Map Scoreboard Schema to Web
                       </label>
+                    </div>
+                    <br />
+                    <div className="form-check form-switch form-control-lg ms-2 border border-secondary text-start">
+                      <p className="fs-3 text-sm text-primary">
+                        {"Other Settings"}
+                      </p>
+
+                      <input
+                        className="form-check-input m-1"
+                        type="checkbox"
+                        id="clone"
+                        checked={this.state.clone}
+                        onChange={() => {
+                          this.setState({
+                            clone: !this.state.clone,
+                          });
+                        }}
+                      />
+                      <label
+                        className="form-check-label ms-1"
+                        htmlFor="flexSwitchCheckDefault"
+                      >
+                        Clone from this Database ?
+                      </label>
+                      <br />
                     </div>
                   </td>
                 </tr>

@@ -1,8 +1,7 @@
 import firebase from "firebase/app";
-import "firebase/firestore";
 import "firebase/auth";
+import "firebase/firestore";
 import fetch from "node-fetch";
-
 import { APIROUTE, iCollection, iDBList } from "./migrationData";
 
 interface migrationSchema {
@@ -10,6 +9,7 @@ interface migrationSchema {
   selectedColls: iCollection[];
   mapUserSchema: boolean;
   mapScoreboardSchema: boolean;
+  clone: boolean;
   destinationDBSAFile: File;
 }
 
@@ -19,6 +19,7 @@ export const handleStartMigration = async (state: migrationSchema) => {
     selectedColls: collList,
     mapUserSchema,
     mapScoreboardSchema,
+    clone,
     destinationDBSAFile: destDBSAFile,
   } = state;
   if (dbList.length === 0) return;
@@ -32,6 +33,7 @@ export const handleStartMigration = async (state: migrationSchema) => {
     collList,
     mapUserSchema,
     mapScoreboardSchema,
+    clone,
     destDBSAFile: destDBSAFileData,
   };
 

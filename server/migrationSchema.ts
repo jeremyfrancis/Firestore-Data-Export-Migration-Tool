@@ -1,3 +1,4 @@
+import * as Contacts from "expo-contacts";
 import firebase from "firebase";
 export interface iDBList {
   id?: number;
@@ -10,7 +11,44 @@ export interface iCollection {
   collectionName?: string;
 }
 
-//#region
+//#region [rgba(255,0,90,0.1)] //TODO SCHEMA's related to scoreboard
+
+export interface MobileScoreboardSchema {
+  title: string;
+  subtitle?: string;
+  id: string;
+  position: number;
+  people: dMobileScore[];
+}
+
+export interface dMobileScore {
+  uid: string;
+  name: string;
+  score: number;
+}
+
+export interface WebScoreboardSchema {
+  _sbid: string;
+  /**
+   * @description id from the Mobile Schema. id and _sbid are not identical.
+   * id here is the title of scoreboard in Mobile Scoreboards.
+   */
+  id: string;
+  title: string;
+  subtitle?: string;
+  position: number;
+  people: dWebScore[];
+  createdAt?: firebase.firestore.FieldValue;
+}
+
+export interface dWebScore {
+  uid: string;
+  name: string;
+  score: number;
+}
+//#endregion
+
+//#region [rgba(120,255,0,0.1)] //TODO SCHEMA's related to user
 export interface WebUserSchema {
   _id: string;
   uid?: string;
@@ -21,7 +59,7 @@ export interface WebUserSchema {
   createdAt?: Date;
   notifications?: { lastRead: Date };
   /** for DEV */
-  imitate: boolean;
+  imitate?: boolean;
   /** @deprecated maybe? move to personali */
   name?: string;
   email?: string;
@@ -63,15 +101,18 @@ export enum FRBS_ROLE {
  * ###  Fields related to user's personal development
  */
 interface dGrowth {
-  allLevelsCompleted: false;
+  allLevelsCompleted: boolean;
   levels: {};
-  listBuilder: {
-    lists: any[];
-    shareTo: string[];
-  };
   /** @deprecated maybe? move to growth */
   team?: string;
 }
+
+// interface test {
+//   listBuilder: {
+//     lists: dListBuilderList[];
+//     shareTo: string[];
+//   };
+// }
 
 export enum THEME {
   NULL = "null",
@@ -79,9 +120,7 @@ export enum THEME {
   DARK = "themeDark",
 }
 interface dPersonali extends Partial<firebase.UserInfo> {}
-//#endregion
 
-//#region MobileUserSchema
 export interface MobileUserSchema {
   uid?: string;
   /**
@@ -113,7 +152,7 @@ export interface MobileUserSchema {
    */
   levels?: {};
   listBuilder?: {
-    lists: any[];
+    lists: dListBuilderList[];
     /**
      * All the user ids this user has given permission to view their personal profile, specifically their contact lists
      */
@@ -132,33 +171,105 @@ export interface MobileUserSchema {
    */
   team?: string;
 }
-//#endregion
 
-export interface MobileScoreboardSchema {
+export interface dListBuilderList {
   title: string;
-  subtitle?: string;
   id: string;
-  position: number;
-  people: dMobileScore[];
+  contacts: Contact[];
+}
+export interface dContactSuggestion extends Partial<Contacts.Contact> {
+  _cid: string;
+  displayName: string;
+  phoneNumbers: Contacts.PhoneNumber[];
+  email?: string;
+  /**
+   * @description Pointer is a way to classifying contacts/potential customers
+   * ---
+   * 5-4: Warm market contact
+   *
+   * 3-2-1: Cold market contact
+   */
+  pointers: "1" | "2" | "3" | "4" | "5" | "";
+  points?: number[];
+  /**
+   * @description null for outside and if it contains value then that contact is an app member.
+   */
+  _uid?: string;
+  /**
+   * @description The list Id will indicate what list this contact belongs to.
+   *              A contact can belong to only one list at a time.
+   */
+  listId: string;
+  /**
+   * @description This field is utilized for BML-Web feature. The value of this field will be in format "rowId:columnId" format.
+   * @example: "3:5" This means the contact belongs to lane 5 (in Trello style board) and vertical position 3 in that lane.
+   */
+  lanePositionId: string;
+  profileImage?: string;
 }
 
-export interface dMobileScore {
-  uid: string;
+export interface ContactGroupSchema {
+  _id: string;
   name: string;
-  score: number;
+  groupType: string; //CONTACTGROUPTYPE;
+  //contacts: { displayName: string; phoneNumber?: number; email: string }[];
+  contacts: string[];
+  shareTo: WebUserSchema["_id"][];
 }
 
-export interface WebScoreboardSchema {
-  _sbid: string;
-  title: string;
-  subtitle?: string;
-  position: number;
-  people: dWebScore[];
-  createdAt?: firebase.firestore.FieldValue;
+export interface EmailAddress {
+  label: string;
+  email: string;
 }
 
-export interface dWebScore {
-  uid: string;
-  name: string;
-  score: number;
+export interface PhoneNumber {
+  label: string;
+  number: string;
 }
+
+export interface PostalAddress {
+  label: string;
+  formattedAddress: string;
+  street: string;
+  pobox: string;
+  neighborhood: string;
+  city: string;
+  region: string;
+  state: string;
+  postCode: string;
+  country: string;
+}
+
+export interface InstantMessageAddress {
+  username: string;
+  service: string;
+}
+
+export interface Birthday {
+  day: number;
+  month: number;
+  year: number;
+}
+
+export interface Contact {
+  recordID: string;
+  backTitle: string;
+  company: string;
+  emailAddresses: EmailAddress[];
+  familyName: string;
+  givenName: string;
+  middleName: string;
+  jobTitle: string;
+  phoneNumbers: PhoneNumber[];
+  hasThumbnail: boolean;
+  thumbnailPath: string;
+  postalAddresses: PostalAddress[];
+  prefix: string;
+  suffix: string;
+  department: string;
+  birthday: Birthday;
+  imAddresses: InstantMessageAddress[];
+  note: string;
+}
+
+//#endregion

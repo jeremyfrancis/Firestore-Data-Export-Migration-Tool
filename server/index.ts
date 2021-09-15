@@ -104,7 +104,7 @@ router.post("/migration", async (req, res) => {
               if (coll === "scoreboard" && mapScoreboardSchema) {
                 if (collDoc.id !== "scores") return;
                 newSBData = mapSBSchemaToWeb(collDoc);
-                console.log(JSON.stringify(newSBData));
+                // console.log(JSON.stringify(newSBData));
               }
 
               //NOTE: Copy Source Collection Document to same collection in Destination ("pages" to "pages", "users" to "users" )
@@ -177,12 +177,20 @@ router.post("/migration", async (req, res) => {
                 if (tempCollDocId.includes("variable")) {
                   delete outCollData.listBuilder;
                 }
+
+                if (tempColl === "possts") {
+                  if (outCollData.goToPage && outCollData.goToPage !== "")
+                    outCollData = {
+                      ...outCollData,
+                      goToPage: "page:" + outCollData.goToPage,
+                    };
+                }
                 await destFS
                   ?.collection(tempColl)
                   .doc(tempCollDocId)
                   .set(outCollData, { merge: true });
 
-                //TODO For Web User, move the listBuilder from MobileUserSchema to a subcollection called contact-groups and contacts in WebUser document.
+                //TODO For Web User, move the listBuilder from MobileUserSchema to a sub-collection called contact-groups and contacts in WebUser document.
                 if (tempColl === "users") {
                   const contactGroupDocs: ContactGroupSchema[] =
                     mapListBuilderToContactGroups(collDoc);
@@ -227,7 +235,10 @@ router.post("/migration", async (req, res) => {
                             .doc(tempCollDocId)
                             .collection(subCollection.id)
                             .doc(subCollDoc.id)
-                            .set(subCollDoc.data(), { merge: true });
+                            .set(
+                              { ...subCollDoc.data(), _id: subCollDoc.id },
+                              { merge: true }
+                            );
                         });
                       });
                     });
@@ -247,6 +258,7 @@ router.post("/migration", async (req, res) => {
       //#endregion
     } else {
       console.log("Error with App Initialization for");
+      res.send("Error while initializing the app");
     }
   });
 
@@ -360,6 +372,13 @@ function mapUserSchemaToWeb(
   collDoc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
 ) {
   let mobileUser = <MobileUserSchema>collDoc.data();
+  const allLevelItems: string[] = [];
+  if (mobileUser.levels) {
+    mobileUser.levels.map((level: { [key: string]: any }) => {
+      allLevelItems.push(...Object.keys(level));
+    });
+  }
+
   let webUser = <WebUserSchema>{
     theme: THEME.LIGHT,
     _id: collDoc.id,
@@ -369,6 +388,7 @@ function mapUserSchemaToWeb(
       phoneNumber: mobileUser.phoneNumber ? mobileUser.phoneNumber : "",
       photoURL: mobileUser.profileImage ? mobileUser.profileImage : "",
     },
+    completedLevelItems: allLevelItems,
     roles: [
       mobileUser.admin
         ? FRBS_ROLE.ADMIN

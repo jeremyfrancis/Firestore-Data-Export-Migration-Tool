@@ -56,6 +56,7 @@ export interface WebUserSchema {
   personali: dPersonali;
   growth?: dGrowth;
   roles?: FRBS_ROLE[];
+  completedLevelItems: string[];
   createdAt?: Date;
   notifications?: { lastRead: Date };
   /** for DEV */
@@ -150,7 +151,7 @@ export interface MobileUserSchema {
   /**
    * Lists each level and the individual items of each level the user has completed
    */
-  levels?: {};
+  levels?: { [key: string]: any };
   listBuilder?: {
     lists: dListBuilderList[];
     /**

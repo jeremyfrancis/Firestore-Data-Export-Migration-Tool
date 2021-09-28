@@ -51,7 +51,8 @@ export interface dWebScore {
 //#region [rgba(120,255,0,0.1)] //TODO SCHEMA's related to user
 export interface WebUserSchema {
   _id: string;
-  uid?: string;
+  _teamId: string;
+  baseShopId: string;
   theme: THEME;
   personali: dPersonali;
   growth?: dGrowth;
@@ -70,7 +71,6 @@ export interface WebUserSchema {
   admin?: boolean;
   /** @deprecated maybe? switch to roles */
   banned?: boolean;
-  team?: string;
   oldMobileSchemaData: any;
 }
 
@@ -84,7 +84,7 @@ export enum FRBS_ROLE {
    * Team leader,
    * who lead the big team
    */
-  LEADER = "LEADER",
+  BS = "BS:",
   /**
    * Hierarchy leader,
    * who lead the hierarchy/branch of the team
@@ -170,9 +170,13 @@ export interface MobileUserSchema {
   /**
    * The team the user has joined, if they have joined a team
    */
-  team?: string;
+  team?: dTeam;
 }
-
+export interface dTeam {
+  role: string;
+  /**@description This is the name of the teampage located in pages collection */
+  teamName: string;
+}
 export interface dListBuilderList {
   title: string;
   id: string;
@@ -274,3 +278,77 @@ export interface Contact {
 }
 
 //#endregion
+
+export interface MediaPageItemSchema {
+  _id?: string;
+  /**
+   * The title of this item!
+   */
+  title?: string;
+  /**
+   * Show some longer paragraph text on the screen
+   */
+  paragraph?: string;
+  /**
+   * A link to either a video or audio file on a supported service like an integrated Vimeo account, Cloudinary, or Dropbox
+   */
+  media?: string;
+  /**
+   * To open a web page in the app (or outside of the app)
+   */
+  url?: string;
+  /**
+   * If value is provided, this item will be a button that opens another MediaPage that exists in the app
+   */
+  topage?: string;
+  /**
+   * Order in which this item is displayed on the page
+   * For example, an item with position -3 will show up before one with position 1
+   */
+  position: number;
+  /**
+   * Not yet being used (not in primerica-template currently)
+   */
+  createdAt: FirebaseFirestore.FieldValue;
+}
+export interface dUserPWDData {
+  uid: string;
+  passwordHash: string;
+  passwordSalt: string;
+}
+
+export interface dPasswordHash {
+  algorithm: string;
+  base64_signer_key: string;
+  base64_salt_separator: string;
+  rounds: number;
+  mem_cost: number;
+}
+
+export interface dListOfPasswordHash {
+  [projectId: string]: dPasswordHash;
+}
+
+export enum WEBFPATH {
+  CONFIG = "config",
+  MORE = "more",
+  PAGES = "PAGES",
+  POSSTS = "possts",
+  COMMENTS = "comments",
+  SCOREBOARDS = "scoreboard",
+  USERS = "users",
+  CUSTOM_PAGE_CONTENT = "pageContent",
+  CONTACT_GROUPS = "contact-groups",
+  CONTACTS = "contacts",
+}
+
+export enum MOBFPATH {
+  CONFIG = "config",
+  MORE = "more",
+  PAGES = "pages",
+  POSSTS = "possts",
+  COMMENTS = "comments",
+  SCOREBOARDS = "scoreboard",
+  USERS = "users",
+  CUSTOM_PAGE_CONTENT = "pageContent",
+}

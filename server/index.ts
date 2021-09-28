@@ -4,15 +4,21 @@ import { firestore } from "firebase-admin";
 import {
   ContactGroupSchema,
   dContactSuggestion,
+  dPasswordHash,
+  dUserPWDData,
   FRBS_ROLE,
   iCollection,
   iDBList,
+  MediaPageItemSchema,
+  MOBFPATH,
   MobileScoreboardSchema,
   MobileUserSchema,
   THEME,
+  WEBFPATH,
   WebScoreboardSchema,
   WebUserSchema,
 } from "./migrationSchema";
+import { setup } from "./password-hash";
 
 const PORT = 3001;
 const app = express();
@@ -86,7 +92,7 @@ router.post("/migration", async (req, res) => {
 
               if (coll === "users" && mapUserSchema) {
                 outCollData = {
-                  ...mapUserSchemaToWeb(collDoc),
+                  ...(await mapUserSchemaToWeb(sourceDBApp, collDoc)),
                   _teamId: collDoc.data()._teamId
                     ? collDoc.data()._teamId
                     : tempProjectId,
@@ -151,9 +157,13 @@ router.post("/migration", async (req, res) => {
                   break;
               }
 
-              const tempColl = coll === "pages" ? "PAGES" : coll;
+              const tempColl = coll === "pages" ? WEBFPATH.PAGES : coll;
 
-              if (tempCollDocId === "" && coll === "scoreboard" && newSBData) {
+              if (
+                tempCollDocId === "" &&
+                coll === WEBFPATH.SCOREBOARDS &&
+                newSBData
+              ) {
                 newSBData.forEach(async (scoreboard) => {
                   await destFS
                     ?.collection(coll)
@@ -178,20 +188,33 @@ router.post("/migration", async (req, res) => {
                   delete outCollData.listBuilder;
                 }
 
-                if (tempColl === "possts") {
+                if (tempColl === WEBFPATH.POSSTS) {
                   if (outCollData.goToPage && outCollData.goToPage !== "")
                     outCollData = {
                       ...outCollData,
                       goToPage: "page:" + outCollData.goToPage,
                     };
                 }
+
+                if (tempColl === WEBFPATH.PAGES) {
+                  outCollData.mediaItem.team =
+                    outCollData.mediaItem.team === "false"
+                      ? false
+                      : outCollData.mediaItem.team === "true"
+                      ? true
+                      : outCollData.mediaItem.team;
+                }
+                if (tempColl === WEBFPATH.MORE) {
+                  outCollData = { ...outCollData, _id: tempCollDocId };
+                }
+
                 await destFS
                   ?.collection(tempColl)
                   .doc(tempCollDocId)
                   .set(outCollData, { merge: true });
 
                 //TODO For Web User, move the listBuilder from MobileUserSchema to a sub-collection called contact-groups and contacts in WebUser document.
-                if (tempColl === "users") {
+                if (tempColl === WEBFPATH.USERS) {
                   const contactGroupDocs: ContactGroupSchema[] =
                     mapListBuilderToContactGroups(collDoc);
                   const listOfContacts: dContactSuggestion[] =
@@ -202,7 +225,7 @@ router.post("/migration", async (req, res) => {
                     const docRef = destFS
                       ?.collection(tempColl)
                       .doc(tempCollDocId)
-                      .collection("contact-groups")
+                      .collection(WEBFPATH.CONTACT_GROUPS)
                       .doc(cgData._id);
                     if (docRef) destBatch?.set(docRef, cgData, { merge: true });
                   });
@@ -211,7 +234,7 @@ router.post("/migration", async (req, res) => {
                     const docRef = destFS
                       ?.collection(tempColl)
                       .doc(tempCollDocId)
-                      .collection("contacts")
+                      .collection(WEBFPATH.CONTACTS)
                       .doc(contactData._cid);
                     if (docRef)
                       destBatch?.set(docRef, contactData, { merge: true });
@@ -221,7 +244,7 @@ router.post("/migration", async (req, res) => {
               }
 
               //NOTE: Step-2: Then Copy all subcollection documents of the root Collection Document.
-              if (coll !== "scoreboard") {
+              if (coll !== WEBFPATH.SCOREBOARDS) {
                 sourceFS
                   .collection(coll)
                   .doc(collDoc.id)
@@ -230,26 +253,52 @@ router.post("/migration", async (req, res) => {
                     subCollections.forEach((subCollection) => {
                       subCollection.get().then((subCollData) => {
                         subCollData.docs.forEach(async (subCollDoc) => {
-                          await destFS
-                            ?.collection(tempColl)
-                            .doc(tempCollDocId)
-                            .collection(subCollection.id)
-                            .doc(subCollDoc.id)
-                            .set(
-                              { ...subCollDoc.data(), _id: subCollDoc.id },
-                              { merge: true }
+                          if (
+                            subCollection.id === WEBFPATH.CUSTOM_PAGE_CONTENT
+                          ) {
+                            const tempPageContent = <MediaPageItemSchema>(
+                              subCollDoc.data()
                             );
+                            tempPageContent.topage = tempPageContent.topage
+                              ? await getPageIdFromName(
+                                  sourceDBApp,
+                                  tempPageContent.topage
+                                )
+                              : "";
+                            tempPageContent.url =
+                              tempPageContent.topage &&
+                              tempPageContent.topage.includes("page:")
+                                ? tempPageContent.topage
+                                : tempPageContent.url
+                                ? tempPageContent.url
+                                : "";
+                          } else {
+                            await destFS
+                              ?.collection(tempColl)
+                              .doc(tempCollDocId)
+                              .collection(subCollection.id)
+                              .doc(subCollDoc.id)
+                              .set(
+                                { ...subCollDoc.data(), _id: subCollDoc.id },
+                                { merge: true }
+                              );
+                          }
                         });
                       });
                     });
                   });
               }
 
-              if (coll === "users" && mapUserSchema) {
+              if (coll === MOBFPATH.USERS && mapUserSchema) {
                 // console.log("Making UID Updates");
-                updateUsersUID(outCollData, sourceDBApp, destDBApp).then(() => {
-                  //console.log("Completed UID Update");
-                });
+                if (destDBApp)
+                  createUserAuthInDestination(
+                    outCollData,
+                    sourceDBApp,
+                    destDBApp
+                  ).then(() => {
+                    //console.log("Completed UID Update");
+                  });
               }
             });
             //
@@ -368,19 +417,25 @@ function mapSBSchemaToWeb(
   return webSchemaData;
 }
 
-function mapUserSchemaToWeb(
+const mapUserSchemaToWeb = async (
+  sourceDBApp: admin.app.App,
   collDoc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
-) {
+) => {
   let mobileUser = <MobileUserSchema>collDoc.data();
-  const allLevelItems: string[] = [];
-  if (mobileUser.levels) {
-    mobileUser.levels.map((level: { [key: string]: any }) => {
-      allLevelItems.push(...Object.keys(level));
-    });
-  }
+  const userRoles: FRBS_ROLE[] = [];
+  mobileUser.banned && userRoles.push(FRBS_ROLE.BANNED);
+  mobileUser.admin
+    ? userRoles.push(FRBS_ROLE.ADMIN)
+    : userRoles.push(FRBS_ROLE.NEWBIE);
+  const userBaseShopId = mobileUser.team
+    ? await getPageIdFromName(sourceDBApp, mobileUser.team.teamName)
+    : "";
+  //@ts-ignore
+  if (userBaseShopId) userRoles.push(FRBS_ROLE.BS + userBaseShopId);
 
   let webUser = <WebUserSchema>{
     theme: THEME.LIGHT,
+    baseShopId: userBaseShopId,
     _id: collDoc.id,
     personali: {
       displayName: mobileUser.name ? mobileUser.name : "",
@@ -388,20 +443,15 @@ function mapUserSchemaToWeb(
       phoneNumber: mobileUser.phoneNumber ? mobileUser.phoneNumber : "",
       photoURL: mobileUser.profileImage ? mobileUser.profileImage : "",
     },
-    completedLevelItems: allLevelItems,
-    roles: [
-      mobileUser.admin
-        ? FRBS_ROLE.ADMIN
-        : mobileUser.banned
-        ? FRBS_ROLE.BANNED
-        : FRBS_ROLE.NEWBIE,
-    ],
+    completedLevelItems: mobileUser.levels
+      ? getLevelNameAndItemsArray(mobileUser.levels)
+      : [],
+    roles: userRoles,
     growth: {
       allLevelsCompleted: mobileUser.allLevelsCompleted
         ? mobileUser.allLevelsCompleted
         : {},
       levels: mobileUser.levels ? mobileUser.levels : {},
-      team: collDoc.data().team ? collDoc.data().team : "",
     },
     //NOTE: Backing up data in a object rather than deleting it.
     oldMobileSchemaData: {
@@ -415,7 +465,6 @@ function mapUserSchemaToWeb(
       profileImage: mobileUser.profileImage ? mobileUser.profileImage : "",
       phoneNumber: mobileUser.phoneNumber ? mobileUser.phoneNumber : "",
       name: mobileUser.name ? mobileUser.name : "",
-      team: mobileUser.team ? mobileUser.team : "",
       admin: mobileUser.admin ? mobileUser.admin : false,
       banned: mobileUser.banned ? mobileUser.banned : false,
     },
@@ -436,64 +485,133 @@ function mapUserSchemaToWeb(
   webUser = { ...webUser, ...mobileUser };
   //console.log(webUser);
   return webUser;
-}
+};
+const getLevelNameAndItemsArray = (levels: {
+  [levelName: string]: any;
+}): string[] => {
+  const result: string[] = [];
+  const levelNames = Object.keys(levels);
+  levelNames.forEach((levelName) => {
+    Object.keys(levels[levelName]).forEach((itemId) => {
+      result.push(levelName + ":" + itemId);
+    });
+  });
+  return result;
+};
 
-async function updateUsersUID(
-  outCollData: WebUserSchema,
-  sourceDBApp: admin.app.App | undefined,
-  destDBApp: admin.app.App | undefined
-) {
-  if (destDBApp === undefined) return;
+const createUserAuthInDestination = async (
+  userData: WebUserSchema,
+  sourceDBApp: admin.app.App,
+  destDBApp: admin.app.App
+) => {
+  const userId = userData._id ? userData._id : "";
+  const userEmail = userData.personali.email ? userData.personali.email : "";
 
-  const admin = destDBApp;
+  console.log(
+    `Check for user with Id ${userId} and email ${userEmail} in the ${destDBApp.name}`
+  );
 
-  const email = outCollData.personali.email ? outCollData.personali.email : "";
-  //console.log("Email is ", email);
+  if (userId === "" || userId === undefined) return;
 
-  if (email === "" || email === undefined) return;
-
-  //console.log("Inside updateUsersUID");
-  let newUserOverrides = {
-    uid: outCollData._id,
-  };
-  let oldUser: any;
   try {
-    oldUser = await admin.auth().getUserByEmail(email!);
-
-    if (oldUser.uid === outCollData._id || oldUser.email === email) {
+    const existingUser = await destDBApp.auth().getUserByEmail(userEmail);
+    console.log(
+      `User exists and it's uid in ${destDBApp.name} env is ${existingUser.uid}`
+    );
+    if (existingUser.uid === userId || existingUser.email === userEmail) {
+      console.log(
+        `User already exists in the ${destDBApp.name}, skipping user creation step.`
+      );
       return;
     }
-    await admin.auth().deleteUser(oldUser.uid);
-  } catch (e) {
+  } catch (error) {
     try {
-      oldUser = await sourceDBApp?.auth().getUserByEmail(email);
-    } catch (e) {
-      return;
+      const userFromSource = await sourceDBApp.auth().getUser(userId);
+      console.log(
+        `User doesn't exist in destination, grabbing data from ${
+          sourceDBApp.appCheck().app.name
+        } and its uid is ${userFromSource.uid}`
+      );
+
+      let passwordHashSetup: dPasswordHash;
+      const projectId = sourceDBApp.options.projectId!;
+      try {
+        passwordHashSetup = setup[projectId];
+        if (Object.keys(passwordHashSetup).length === 0) {
+          console.error(
+            `Password Hash Setup does not exist for hierarchy ${projectId}. Reach out to DEV Team!`
+          );
+          return;
+        }
+      } catch (err) {
+        console.error(
+          `Password Hash Setup does not exist for hierarchy ${projectId}. Reach out to DEV Team!`
+        );
+        return;
+      }
+      const userPasswordData = await getUserPasswordHash(userId, sourceDBApp);
+
+      const userImportRecords = [
+        {
+          uid: userFromSource.uid,
+          email: userFromSource.email,
+          // Must be provided in a byte buffer.
+          passwordHash: Buffer.from(userPasswordData.passwordHash, "base64"),
+          // Must be provided in a byte buffer.
+          passwordSalt: Buffer.from(userPasswordData.passwordSalt, "base64"),
+        },
+      ];
+
+      await destDBApp.auth().importUsers(userImportRecords, {
+        hash: {
+          algorithm: "SCRYPT",
+          // All the parameters below can be obtained from the Firebase Console's users section.
+          // Must be provided in a byte buffer.
+          key: Buffer.from(passwordHashSetup.base64_signer_key, "base64"),
+          saltSeparator: Buffer.from(
+            passwordHashSetup.base64_salt_separator,
+            "base64"
+          ),
+          rounds: 8,
+          memoryCost: 14,
+        },
+      });
+    } catch (err) {
+      console.error("Error while Creating User Authentication Information!!");
     }
   }
+};
 
-  let dataToTransfer_keys = [
-    "disabled",
-    "displayName",
-    "email",
-    "emailVerified",
-    "phoneNumber",
-    "photoURL",
-    "uid",
-    "providerData",
-  ];
-  let newUserData: any = {};
-  for (let key of dataToTransfer_keys) {
-    newUserData[key] = oldUser[key];
+const getUserPasswordHash = async (
+  uid: string,
+  sourceDBApp: admin.app.App,
+  nextPageToken?: any
+) => {
+  // List batch of users, 1000 at a time.
+  const passwordData = {} as dUserPWDData;
+  const listUsersResult = await sourceDBApp
+    .auth()
+    .listUsers(1000, nextPageToken);
+
+  const foundUser = listUsersResult.users.find((x) => x.uid === uid);
+  //foundUser?.metadata.
+  if (foundUser) {
+    passwordData.uid = foundUser.uid;
+    passwordData.passwordHash = foundUser.passwordHash
+      ? foundUser.passwordHash
+      : "";
+    passwordData.passwordSalt = foundUser.passwordSalt
+      ? foundUser.passwordSalt
+      : "";
   }
-  Object.assign(newUserData, newUserOverrides);
-  try {
-    let newUser = await admin.auth().createUser(newUserData);
-  } catch (e) {
-    return;
+  if (passwordData.passwordHash === "" && listUsersResult.pageToken) {
+    // List next batch of users.
+    await getUserPasswordHash(uid, sourceDBApp, listUsersResult.pageToken);
   }
-  //console.log("New user created ");
-}
+
+  return passwordData;
+};
+
 function mapListBuilderToContactGroups(
   collDoc: firestore.QueryDocumentSnapshot<firestore.DocumentData>
 ): ContactGroupSchema[] {
@@ -535,13 +653,13 @@ function mapListBuilderToContacts(
       list.contacts.forEach((contact) => {
         let tempData: dContactSuggestion = <dContactSuggestion>{};
         tempData._cid = contact.recordID;
-        (tempData.displayName =
+        tempData.displayName =
           contact.givenName + " " + contact.familyName
             ? contact.givenName + " " + contact.familyName
-            : ""),
-          (tempData.phoneNumbers = tempData.phoneNumbers
-            ? tempData.phoneNumbers
-            : []);
+            : "";
+        tempData.phoneNumbers = tempData.phoneNumbers
+          ? tempData.phoneNumbers
+          : [];
         contact.phoneNumbers.forEach((phoneNumber, index) => {
           tempData.phoneNumbers.push({
             ...phoneNumber,
@@ -570,3 +688,26 @@ function mapListBuilderToContacts(
   // );
   return results;
 }
+
+const getPageIdFromName = async (sourceApp: admin.app.App, topage: string) => {
+  const sourceDB = sourceApp.firestore();
+  if (topage) {
+    let ref;
+    try {
+      ref = await sourceDB
+        .collection(MOBFPATH.PAGES)
+        .where("name", "==", topage)
+        .get();
+    } catch (err) {
+      console.log(
+        `Error while finding topage with name ${topage} for mobile -> Web Data Sync`
+      );
+    }
+    //NOTE If multiple pages with same name then grab the first one.
+    const mobPageId = ref?.docs[0].id;
+    topage = mobPageId ? "page:" + mobPageId : "";
+    console.log("mappedData.topage for the web is :>> ", topage);
+  }
+
+  return topage;
+};

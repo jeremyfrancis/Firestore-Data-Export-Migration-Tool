@@ -4,15 +4,17 @@ import { firestore } from "firebase-admin";
 import {
   ContactGroupSchema,
   dContactSuggestion,
+  dMobMediaPageItem,
   dPasswordHash,
   dUserPWDData,
   FRBS_ROLE,
   iCollection,
   iDBList,
-  MediaPageItemSchema,
   MOBFPATH,
   MobileScoreboardSchema,
   MobileUserSchema,
+  MobMediaPageSchema,
+  MobPosstSchema,
   THEME,
   WEBFPATH,
   WebScoreboardSchema,
@@ -29,24 +31,18 @@ app.use(bodyParser.json());
 
 app.use("/", router);
 
+let authUsersDeletedCount: number = 0;
+
 app.listen(PORT, () => {
   console.log(`Server listening on ${PORT}`);
 });
 
-router.post("/migration", async (req, res) => {
+router.post("/clearAuth", async (req, res) => {
   const {
-    dbNameList,
-    collList,
-    mapUserSchema,
-    mapScoreboardSchema,
-    clone,
+    deleteAuthRecords,
     destDBSAFile,
   }: {
-    dbNameList: iDBList[];
-    collList: iCollection[];
-    mapUserSchema: boolean;
-    mapScoreboardSchema: boolean;
-    clone: boolean;
+    deleteAuthRecords: boolean;
     destDBSAFile: any;
   } = req.body;
 
@@ -56,65 +52,235 @@ router.post("/migration", async (req, res) => {
     "destination",
     destDBSAFile
   );
+
+  if (deleteAuthRecords && destDBApp) {
+    await cleanUpDestinationAuthUsers(destDBApp);
+    res.send(
+      `Auth Deletion successful for ${destDBApp.name} and ${authUsersDeletedCount} user(s) were deleted`
+    );
+    return;
+  }
+});
+
+router.post("/fixMobileData", async (req, res) => {
+  const {
+    fixMobileData,
+    selectedDBList,
+  }: {
+    fixMobileData: boolean;
+    selectedDBList: iDBList[];
+  } = req.body;
+
+  //console.log(req.body);
+  //#region This is Destination DB Area
+  const sourceProjectId = selectedDBList[0].projectId!.replace(
+    "-service-account.json",
+    ""
+  );
+
+  if (selectedDBList.length > 1) {
+    res.status(444);
+    res.send("Cannot process more than 1 DB at a time!!");
+  }
+
+  const sourceDBApp = initApp(sourceProjectId, "source");
+  const priPreloadedApp = initApp("preloaded-primerica-content", "source");
+  const priPreloadedDB = priPreloadedApp?.firestore();
+  const sourceDB = sourceDBApp?.firestore();
+
+  if (fixMobileData && sourceDB && priPreloadedDB) {
+    //!STEP 1: Get the copy of all the document ids from Primerica Preloaded Content
+    const priPreloadedPageIds: string[] = [];
+    const pageRefPri = await priPreloadedDB.collection(MOBFPATH.PAGES).get();
+    if (pageRefPri) {
+      pageRefPri.docs.forEach((doc) => {
+        priPreloadedPageIds.push(doc.id);
+      });
+    }
+
+    console.log("pageIdsFrom", JSON.stringify(priPreloadedPageIds));
+    const posstRef = sourceDB.collection(MOBFPATH.POSSTS);
+
+    //!STEP 2: Compare the pageIds for the selected DB with ids from Step 1.
+    //*If the pageId exists then create a copy of that page with new ID but keep
+    //*the pageContentId the same.
+    const srcAppPagesRef = await sourceDB.collection(MOBFPATH.PAGES).get();
+    srcAppPagesRef?.docs.forEach(async (srcPage) => {
+      //! TESTING ONLY FOR 1 PAGE FIRST
+      console.log(`The pageId inside the app is ${srcPage.id}`);
+      if (priPreloadedPageIds.includes(srcPage.id)) {
+        console.log("PAGE IDS MATCHED!!!");
+        const newPageDocRef = sourceDB?.collection(MOBFPATH.PAGES).doc();
+        if (newPageDocRef) {
+          const newPageData = <MobMediaPageSchema>{
+            ...srcPage.data(),
+            id: newPageDocRef.id,
+          };
+
+          console.log(
+            `Old Page Id ${
+              srcPage.id //+ ":" + srcPage.data().name
+            } and its new id will be ${newPageData.id}` //+ ":" + newPageData.name
+          );
+          await sourceDB
+            .collection(MOBFPATH.PAGES)
+            .doc(newPageDocRef.id)
+            .set(newPageData);
+
+          const oldPageContentRef = await sourceDB
+            .collection(MOBFPATH.PAGES)
+            .doc(srcPage.id)
+            .collection(MOBFPATH.CUSTOM_PAGE_CONTENT)
+            .get();
+
+          oldPageContentRef.docs.forEach(async (pageContent) => {
+            const oldPageContentData = pageContent.data();
+            await sourceDB
+              .collection(MOBFPATH.PAGES)
+              .doc(newPageData.id)
+              .collection(MOBFPATH.CUSTOM_PAGE_CONTENT)
+              .doc(pageContent.id)
+              .set(oldPageContentData);
+
+            //! Delete the pageContent contents of old duplicate page
+            await sourceDB
+              .collection(MOBFPATH.PAGES)
+              .doc(srcPage.id)
+              .collection(MOBFPATH.CUSTOM_PAGE_CONTENT)
+              .doc(pageContent.id)
+              .delete();
+          });
+
+          //!STEP 3: For each newly created Page, save the new id and old id for updating the references
+          //!STEP 4: Update the reference in possts
+          const posstDocRef = await posstRef
+            .where("goToPage", "==", srcPage.id)
+            .get();
+          posstDocRef.docs.forEach((posst) => {
+            const posstData = <MobPosstSchema>{
+              ...posst.data(),
+              goToPage: newPageData.id,
+            };
+            console.log(
+              `Posst that will be affected by this is ${posst.id} and new goToPage will be ${newPageData.id}`
+            );
+            posstRef.doc(posst.id).set(posstData, { merge: true });
+          });
+
+          //!Step 5: Delete the old Page Document
+          await sourceDB.collection(MOBFPATH.PAGES).doc(srcPage.id).delete();
+        }
+      } else {
+        console.log(`PageId ${srcPage.id} doesn't exist in Preloaded Content`);
+      }
+    });
+
+    res.send(`Pages Data cleaned up for the app ${sourceDBApp?.name}`);
+    return;
+  } else {
+    res.status(444);
+    res.send(
+      `Error while cleaning up duplicate pages for ${sourceDBApp?.name}`
+    );
+    return;
+  }
+});
+
+router.post("/migration", async (req, res) => {
+  const {
+    dbNameList,
+    collList,
+    mapUserSchema,
+    mapScoreboardSchema,
+    clone,
+    testing,
+    deleteAuthRecords,
+    destDBSAFile,
+  }: {
+    dbNameList: iDBList[];
+    collList: iCollection[];
+    mapUserSchema: boolean;
+    mapScoreboardSchema: boolean;
+    clone: boolean;
+    testing: boolean;
+    deleteAuthRecords: boolean;
+    destDBSAFile: any;
+  } = req.body;
+
+  //#region This is Destination DB Area
+  const destDBApp = initApp(
+    JSON.parse(destDBSAFile).project_id,
+    "destination",
+    destDBSAFile
+  );
+
+  if (deleteAuthRecords && destDBApp) {
+    await cleanUpDestinationAuthUsers(destDBApp);
+    console.log(
+      `Auth Deletion successful for ${destDBApp.name} and ${authUsersDeletedCount} user(s) were deleted`
+    );
+    return;
+  }
   const destFS = destDBApp?.firestore();
   //#endregion
 
   //#region This is Source DB(s) area
   dbNameList.forEach(async (sourceDB) => {
-    const sourceProjectId = sourceDB.projectId!.replace(
-      "-service-account.json",
-      ""
-    );
-    const sourceDBApp = initApp(sourceProjectId, "source");
+    const test = sourceDB.projectId!.replace("-service-account.json", "");
+    const sourceProjectId =
+      test === "clone-primr-exp" ? "carreon-hierarchy-mb2" : test;
+
+    const sourceDBApp = initApp(test, "source");
 
     if (sourceDBApp !== undefined) {
       const collNames: string[] = await getCollections(sourceDBApp, collList);
       //console.log("Total Collections " + JSON.stringify(collNames));
 
       const sourceFS = sourceDBApp.firestore();
+
       collNames.forEach((coll) => {
-        console.log(
-          "Starting data move for " +
-            sourceProjectId +
-            " and collection " +
-            coll
-        );
-        sourceFS
-          .collection(coll)
-          //.limit(1)
-          //TODO COMMENT THIS AFTER TESTING
-          //.where("email", "==", "mankar.saurabh@gmail.com")
-          .get()
-          .then((collDocSnap) => {
-            collDocSnap.docs.forEach(async (collDoc) => {
-              let outCollData: any;
-              let tempProjectId = sourceProjectId;
+        let query = testing
+          ? sourceFS.collection(coll).limit(10)
+          : sourceFS.collection(coll);
 
-              if (coll === "users" && mapUserSchema) {
-                outCollData = {
-                  ...(await mapUserSchemaToWeb(sourceDBApp, collDoc)),
-                  _teamId: collDoc.data()._teamId
-                    ? collDoc.data()._teamId
-                    : tempProjectId,
-                };
-              } else {
-                outCollData = {
-                  ...collDoc.data(),
-                  _teamId: collDoc.data()._teamId
-                    ? collDoc.data()._teamId
-                    : tempProjectId,
-                };
-              }
+        query.get().then((collDocSnap) => {
+          collDocSnap.docs.forEach(async (collDoc) => {
+            let outCollData: any;
+            let tempProjectId = sourceProjectId;
+            // console.log(
+            //   "Starting data move for " +
+            //     test +
+            //     " and collection " +
+            //     coll +
+            //     " and id is " +
+            //     collDoc.id
+            // );
 
-              let newSBData;
-              if (coll === "scoreboard" && mapScoreboardSchema) {
-                if (collDoc.id !== "scores") return;
-                newSBData = mapSBSchemaToWeb(collDoc);
-                // console.log(JSON.stringify(newSBData));
-              }
+            if (coll === "users" && mapUserSchema) {
+              outCollData = {
+                ...(await mapUserSchemaToWeb(sourceDBApp, collDoc)),
+                _teamId: collDoc.data()._teamId
+                  ? collDoc.data()._teamId
+                  : tempProjectId,
+              };
+            } else {
+              outCollData = {
+                ...collDoc.data(),
+                _teamId: collDoc.data()._teamId
+                  ? collDoc.data()._teamId
+                  : tempProjectId,
+              };
+            }
 
-              //NOTE: Copy Source Collection Document to same collection in Destination ("pages" to "pages", "users" to "users" )
-              /*NOTE: If you're not sure whether the document exists, pass the option to merge the new data 
+            let newSBData;
+            if (coll === MOBFPATH.SCOREBOARDS && mapScoreboardSchema) {
+              if (collDoc.id !== "scores") return;
+              newSBData = mapSBSchemaToWeb(collDoc);
+              // console.log(JSON.stringify(newSBData));
+            }
+
+            //NOTE: Copy Source Collection Document to same collection in Destination ("pages" to "pages", "users" to "users" )
+            /*NOTE: If you're not sure whether the document exists, pass the option to merge the new data 
                     with any existing document to avoid overwriting entire documents.
                     Example:
                     var cityRef = db.collection('cities').doc('BJ');
@@ -124,97 +290,177 @@ router.post("/migration", async (req, res) => {
                     
               */
 
-              //NOTE: Step-1: First Copy Collection Documents
-              //     Exception. Some documents have named document ids rather than a random name.
-              //     For those documents the doc Id is constructed as doc.id + projectId
-              let tempCollDocId: string;
-              switch (coll) {
-                case "config":
-                  tempCollDocId = clone
-                    ? collDoc.id
-                    : collDoc.id + "-" + sourceProjectId;
-                  break;
-                case "notifications":
-                  tempCollDocId = clone
-                    ? collDoc.id
-                    : collDoc.id + "-" + sourceProjectId;
-                  break;
-                case "scoreboard":
-                  tempCollDocId = "";
-                  break;
-                case "zoom":
-                  tempCollDocId = clone
-                    ? collDoc.id
-                    : collDoc.id + "-" + sourceProjectId;
-                  break;
-                case "channels":
-                  tempCollDocId = clone
-                    ? collDoc.id
-                    : collDoc.id + "-" + sourceProjectId;
-                  break;
-                default:
-                  tempCollDocId = collDoc.id;
-                  break;
+            //NOTE: Step-1: First Copy Collection Documents
+            //     Exception. Some documents have named document ids rather than a random name.
+            //     For those documents the doc Id is constructed as doc.id + projectId
+
+            let tempCollDocId: string;
+            switch (coll) {
+              case "config":
+                tempCollDocId = clone
+                  ? collDoc.id
+                  : collDoc.id + "-" + sourceProjectId;
+                break;
+              case "configs":
+                tempCollDocId = clone
+                  ? collDoc.id
+                  : collDoc.id + "-" + sourceProjectId;
+                break;
+              case "notifications":
+                tempCollDocId = clone
+                  ? collDoc.id
+                  : collDoc.id + "-" + sourceProjectId;
+                break;
+              case "scoreboard":
+                tempCollDocId = "";
+                break;
+              case "zoom":
+                tempCollDocId = clone
+                  ? collDoc.id
+                  : collDoc.id + "-" + sourceProjectId;
+                break;
+              case "channels":
+                tempCollDocId = clone
+                  ? collDoc.id
+                  : collDoc.id + "-" + sourceProjectId;
+                break;
+              default:
+                tempCollDocId = collDoc.id;
+                break;
+            }
+
+            let webCollName: string;
+            switch (coll) {
+              case MOBFPATH.CONFIG:
+                webCollName = WEBFPATH.CONFIG;
+                break;
+              case MOBFPATH.USERS:
+                webCollName = WEBFPATH.USERS;
+                break;
+              case MOBFPATH.SCOREBOARDS:
+                webCollName = WEBFPATH.SCOREBOARDS;
+                break;
+              case MOBFPATH.MORE:
+                webCollName = WEBFPATH.MORE;
+                break;
+              case MOBFPATH.PAGES:
+                webCollName = WEBFPATH.PAGES;
+                break;
+
+              default:
+                webCollName = coll;
+                break;
+            }
+
+            if (
+              tempCollDocId === "" &&
+              webCollName === WEBFPATH.SCOREBOARDS &&
+              newSBData
+            ) {
+              newSBData.forEach(async (scoreboard) => {
+                await destFS
+                  ?.collection(webCollName)
+                  .add({
+                    _teamId: collDoc.data()._teamId
+                      ? collDoc.data()._teamId
+                      : sourceProjectId,
+                    ...scoreboard,
+                  })
+                  .then(async function (newSBID) {
+                    await destFS
+                      .collection(webCollName)
+                      .doc(newSBID.id)
+                      .update({
+                        _sbid: newSBID.id.replace("/scoreboard/", ""),
+                      });
+                  });
+              });
+            } else {
+              //NOTE:We are moving defaultLists to code instead of firestore
+              if (tempCollDocId.includes("variable")) {
+                outCollData.subdomain = "";
+                delete outCollData.listBuilder;
               }
 
-              const tempColl = coll === "pages" ? WEBFPATH.PAGES : coll;
-
-              if (
-                tempCollDocId === "" &&
-                coll === WEBFPATH.SCOREBOARDS &&
-                newSBData
-              ) {
-                newSBData.forEach(async (scoreboard) => {
-                  await destFS
-                    ?.collection(coll)
-                    .add({
-                      _teamId: collDoc.data()._teamId
-                        ? collDoc.data()._teamId
-                        : sourceProjectId,
-                      ...scoreboard,
-                    })
-                    .then(async function (newSBID) {
-                      await destFS
-                        .collection(coll)
-                        .doc(newSBID.id)
-                        .update({
-                          _sbid: newSBID.id.replace("/scoreboard/", ""),
-                        });
-                    });
-                });
-              } else {
-                //NOTE:We are moving defaultLists to code instead of firestore
-                if (tempCollDocId.includes("variable")) {
-                  delete outCollData.listBuilder;
+              if (webCollName === WEBFPATH.POSSTS) {
+                if (outCollData.goToPage && outCollData.goToPage !== "") {
+                  outCollData = {
+                    ...outCollData,
+                    goToPage: "page:" + outCollData.goToPage,
+                    _teamId: collDoc.data()._teamId
+                      ? collDoc.data()._teamId
+                      : tempProjectId,
+                    _pid: tempCollDocId,
+                  };
+                } else {
+                  outCollData = {
+                    ...outCollData,
+                    _teamId: collDoc.data()._teamId
+                      ? collDoc.data()._teamId
+                      : tempProjectId,
+                    _pid: tempCollDocId,
+                  };
                 }
+              }
 
-                if (tempColl === WEBFPATH.POSSTS) {
-                  if (outCollData.goToPage && outCollData.goToPage !== "")
-                    outCollData = {
-                      ...outCollData,
-                      goToPage: "page:" + outCollData.goToPage,
-                    };
-                }
-
-                if (tempColl === WEBFPATH.PAGES) {
+              if (webCollName === WEBFPATH.PAGES) {
+                if (outCollData.mediaItem) {
                   outCollData.mediaItem.team =
                     outCollData.mediaItem.team === "false"
                       ? false
                       : outCollData.mediaItem.team === "true"
                       ? true
                       : outCollData.mediaItem.team;
-                }
-                if (tempColl === WEBFPATH.MORE) {
-                  outCollData = { ...outCollData, _id: tempCollDocId };
-                }
 
-                await destFS
-                  ?.collection(tempColl)
-                  .doc(tempCollDocId)
-                  .set(outCollData, { merge: true });
+                  outCollData.mediaItem.visible =
+                    outCollData.mediaItem.visible === "false"
+                      ? false
+                      : outCollData.mediaItem.visible === "true"
+                      ? true
+                      : outCollData.mediaItem.visible;
+                }
+                if (outCollData.pageItem) {
+                  outCollData.pageItem.visible =
+                    outCollData.pageItem.visible === "false"
+                      ? false
+                      : outCollData.pageItem.visible === "true"
+                      ? true
+                      : outCollData.pageItem.visible;
+                }
+                if (outCollData.api) {
+                  delete outCollData.api;
+                }
+              }
+              if (
+                webCollName === WEBFPATH.MORE ||
+                webCollName === WEBFPATH.PAGES
+              ) {
+                outCollData = {
+                  ...outCollData,
+                  _teamId: collDoc.data()._teamId
+                    ? collDoc.data()._teamId
+                    : tempProjectId,
+                  _id: tempCollDocId,
+                };
+              }
 
-                //TODO For Web User, move the listBuilder from MobileUserSchema to a sub-collection called contact-groups and contacts in WebUser document.
-                if (tempColl === WEBFPATH.USERS) {
+              if (webCollName === WEBFPATH.CONFIG) {
+                tempCollDocId = !tempCollDocId.includes("-")
+                  ? tempCollDocId + "-" + tempProjectId
+                  : tempCollDocId;
+                console.log(tempCollDocId);
+              }
+              // console.log(
+              //   `id before saving document ${webCollName} is ${tempCollDocId}`
+              // );
+              await destFS
+                ?.collection(webCollName)
+                .doc(tempCollDocId)
+                .set(outCollData, { merge: true });
+
+              //TODO For Web User, move the listBuilder from MobileUserSchema to a sub-collection called contact-groups and contacts in WebUser document.
+              if (webCollName === WEBFPATH.USERS) {
+                try {
                   const contactGroupDocs: ContactGroupSchema[] =
                     mapListBuilderToContactGroups(collDoc);
                   const listOfContacts: dContactSuggestion[] =
@@ -222,8 +468,12 @@ router.post("/migration", async (req, res) => {
 
                   const destBatch = destDBApp?.firestore().batch();
                   contactGroupDocs.forEach((cgData) => {
+                    // console.log("cgData", JSON.stringify(cgData));
+                    // console.log(
+                    //   `With cgData cgData._id is ${cgData._id} tempColl ${webCollName} is and tempCollDocId is ${tempCollDocId}`
+                    // );
                     const docRef = destFS
-                      ?.collection(tempColl)
+                      ?.collection(webCollName)
                       .doc(tempCollDocId)
                       .collection(WEBFPATH.CONTACT_GROUPS)
                       .doc(cgData._id);
@@ -231,8 +481,12 @@ router.post("/migration", async (req, res) => {
                   });
 
                   listOfContacts.forEach((contactData) => {
+                    // console.log("contactData", JSON.stringify(contactData));
+                    // console.log(
+                    //   `With contactData contactData._cid is ${contactData._cid} tempColl ${webCollName} is and tempCollDocId is ${tempCollDocId}`
+                    // );
                     const docRef = destFS
-                      ?.collection(tempColl)
+                      ?.collection(webCollName)
                       .doc(tempCollDocId)
                       .collection(WEBFPATH.CONTACTS)
                       .doc(contactData._cid);
@@ -240,69 +494,104 @@ router.post("/migration", async (req, res) => {
                       destBatch?.set(docRef, contactData, { merge: true });
                   });
                   await destBatch?.commit();
+                } catch (err) {
+                  console.log(
+                    "Error While mapping ListBuilder and Contacts",
+                    err
+                  );
+                  throw new Error(
+                    "Error While mapping ListBuilder and Contacts"
+                  );
                 }
               }
+            }
 
-              //NOTE: Step-2: Then Copy all subcollection documents of the root Collection Document.
-              if (coll !== WEBFPATH.SCOREBOARDS) {
-                sourceFS
-                  .collection(coll)
-                  .doc(collDoc.id)
-                  .listCollections()
-                  .then((subCollections) => {
-                    subCollections.forEach((subCollection) => {
-                      subCollection.get().then((subCollData) => {
-                        subCollData.docs.forEach(async (subCollDoc) => {
-                          if (
-                            subCollection.id === WEBFPATH.CUSTOM_PAGE_CONTENT
-                          ) {
-                            const tempPageContent = <MediaPageItemSchema>(
-                              subCollDoc.data()
-                            );
-                            tempPageContent.topage = tempPageContent.topage
-                              ? await getPageIdFromName(
-                                  sourceDBApp,
-                                  tempPageContent.topage
-                                )
-                              : "";
-                            tempPageContent.url =
-                              tempPageContent.topage &&
-                              tempPageContent.topage.includes("page:")
-                                ? tempPageContent.topage
-                                : tempPageContent.url
-                                ? tempPageContent.url
-                                : "";
-                          } else {
-                            await destFS
-                              ?.collection(tempColl)
-                              .doc(tempCollDocId)
-                              .collection(subCollection.id)
-                              .doc(subCollDoc.id)
-                              .set(
-                                { ...subCollDoc.data(), _id: subCollDoc.id },
-                                { merge: true }
-                              );
+            //NOTE: Step-2: Then Copy all subcollection documents of the root Collection Document.
+            if (coll !== WEBFPATH.SCOREBOARDS) {
+              sourceFS
+                .collection(coll)
+                .doc(collDoc.id)
+                .listCollections()
+                .then((subCollections) => {
+                  subCollections.forEach((subCollection) => {
+                    subCollection.get().then((subCollData) => {
+                      subCollData.docs.forEach(async (subCollDoc) => {
+                        if (subCollection.id === WEBFPATH.CUSTOM_PAGE_CONTENT) {
+                          const tempPageContent = <dMobMediaPageItem>(
+                            subCollDoc.data()
+                          );
+                          tempPageContent.topage = tempPageContent.topage
+                            ? await getPageIdFromName(
+                                sourceDBApp,
+                                tempPageContent.topage
+                              )
+                            : "";
+                          if (tempPageContent.media) {
+                            tempPageContent.media =
+                              tempPageContent.media == "0"
+                                ? ""
+                                : tempPageContent.media;
                           }
-                        });
+                          if (tempPageContent.paragraph) {
+                            tempPageContent.paragraph =
+                              tempPageContent.paragraph == "0"
+                                ? ""
+                                : tempPageContent.paragraph;
+                          }
+                          tempPageContent.url =
+                            tempPageContent.topage &&
+                            tempPageContent.topage?.includes("page:")
+                              ? tempPageContent.topage
+                              : tempPageContent.url
+                              ? tempPageContent.url
+                              : "";
+                          if (tempPageContent.url) {
+                            tempPageContent.url = tempPageContent.url.includes(
+                              "ext:"
+                            )
+                              ? tempPageContent.url.replace("ext:", "")
+                              : tempPageContent.url;
+                          }
+                          await destFS
+                            ?.collection(webCollName)
+                            .doc(tempCollDocId)
+                            .collection(subCollection.id)
+                            .doc(subCollDoc.id)
+                            .set(
+                              { ...tempPageContent, _id: subCollDoc.id },
+                              { merge: true }
+                            );
+                        } else {
+                          await destFS
+                            ?.collection(webCollName)
+                            .doc(tempCollDocId)
+                            .collection(subCollection.id)
+                            .doc(subCollDoc.id)
+                            .set(
+                              { ...subCollDoc.data(), _id: subCollDoc.id },
+                              { merge: true }
+                            );
+                        }
                       });
                     });
                   });
-              }
+                });
+            }
 
-              if (coll === MOBFPATH.USERS && mapUserSchema) {
-                // console.log("Making UID Updates");
-                if (destDBApp)
-                  createUserAuthInDestination(
-                    outCollData,
-                    sourceDBApp,
-                    destDBApp
-                  ).then(() => {
-                    //console.log("Completed UID Update");
-                  });
-              }
-            });
-            //
+            if (coll === MOBFPATH.USERS && mapUserSchema) {
+              // console.log("Making UID Updates");
+              if (destDBApp)
+                createUserAuthInDestination(
+                  outCollData,
+                  sourceDBApp,
+                  destDBApp
+                ).then(() => {
+                  //console.log("Completed UID Update");
+                });
+            }
           });
+          //
+        });
       });
       //#endregion
     } else {
@@ -319,7 +608,7 @@ router.post("/migration", async (req, res) => {
  * @param projectId Project Id from Firebase for different Production projects.
  * @returns initialized app based upon the service-account.json file
  */
-function initApp(projectId: string, appType: string, fileData?: string) {
+const initApp = (projectId: string, appType: string, fileData?: string) => {
   let serviceAccount;
   try {
     if (appType === "source") {
@@ -360,17 +649,17 @@ function initApp(projectId: string, appType: string, fileData?: string) {
       `${projectId}`
     );
   }
-}
+};
 
 /**
  *
  * @param dbApp The initialized app for which we need to find all root collections
  * @returns Collections in firestore for the app that is passed.
  */
-async function getCollections(
+const getCollections = async (
   dbApp: admin.app.App,
   collList: iCollection[]
-): Promise<string[]> {
+): Promise<string[]> => {
   const output = await dbApp
     .firestore()
     .listCollections()
@@ -378,23 +667,18 @@ async function getCollections(
       const output: string[] = [];
       collections.forEach((coll) => {
         if (collList.find((x) => x.collectionName === coll.id))
-          //if (coll.id === "users")
+          //if (coll.id === MOBFPATH.POSSTS)
           output.push(coll.id);
       });
       return output;
     });
 
   return output;
-}
+};
 
-interface customMobileSBSchema {
-  title: {
-    data: MobileScoreboardSchema;
-  };
-}
-function mapSBSchemaToWeb(
+const mapSBSchemaToWeb = (
   collDoc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
-) {
+) => {
   //console.log("collDoc.id :>> ", collDoc.id);
 
   let mobileSchemaData = Object.values(<MobileScoreboardSchema>collDoc.data());
@@ -415,7 +699,7 @@ function mapSBSchemaToWeb(
   });
 
   return webSchemaData;
-}
+};
 
 const mapUserSchemaToWeb = async (
   sourceDBApp: admin.app.App,
@@ -427,11 +711,17 @@ const mapUserSchemaToWeb = async (
   mobileUser.admin
     ? userRoles.push(FRBS_ROLE.ADMIN)
     : userRoles.push(FRBS_ROLE.NEWBIE);
-  const userBaseShopId = mobileUser.team
-    ? await getPageIdFromName(sourceDBApp, mobileUser.team.teamName)
-    : "";
+
+  const userBaseShopId =
+    (mobileUser.team
+      ? await getPageIdFromName(sourceDBApp, mobileUser.team.teamName)
+      : ""
+    )?.replace("page:", "") || "";
+  const teamRole = mobileUser.team?.role ? mobileUser.team.role : "";
   //@ts-ignore
-  if (userBaseShopId) userRoles.push(FRBS_ROLE.BS + userBaseShopId);
+  if (userBaseShopId && teamRole) userRoles.push(FRBS_ROLE.BS + userBaseShopId);
+  // console.log("userBaseShopId: ", userBaseShopId);
+  // console.log("userRoles", userRoles);
 
   let webUser = <WebUserSchema>{
     theme: THEME.LIGHT,
@@ -447,6 +737,12 @@ const mapUserSchemaToWeb = async (
       ? getLevelNameAndItemsArray(mobileUser.levels)
       : [],
     roles: userRoles,
+    allLevelsCompleted: mobileUser.allLevelsCompleted
+      ? mobileUser.allLevelsCompleted
+      : false,
+    lastSignIn: mobileUser.lastSignIn
+      ? mobileUser.lastSignIn
+      : firestore.FieldValue.serverTimestamp(),
     growth: {
       allLevelsCompleted: mobileUser.allLevelsCompleted
         ? mobileUser.allLevelsCompleted
@@ -483,9 +779,10 @@ const mapUserSchemaToWeb = async (
   delete mobileUser.banned;
 
   webUser = { ...webUser, ...mobileUser };
-  //console.log(webUser);
+  // console.log("data being returned for user", webUser);
   return webUser;
 };
+
 const getLevelNameAndItemsArray = (levels: {
   [levelName: string]: any;
 }): string[] => {
@@ -507,9 +804,9 @@ const createUserAuthInDestination = async (
   const userId = userData._id ? userData._id : "";
   const userEmail = userData.personali.email ? userData.personali.email : "";
 
-  console.log(
-    `Check for user with Id ${userId} and email ${userEmail} in the ${destDBApp.name}`
-  );
+  // console.log(
+  //   `Check for user with Id ${userId} and email ${userEmail} in the ${destDBApp.name}`
+  // );
 
   if (userId === "" || userId === undefined) return;
 
@@ -528,14 +825,13 @@ const createUserAuthInDestination = async (
     try {
       const userFromSource = await sourceDBApp.auth().getUser(userId);
       console.log(
-        `User doesn't exist in destination, grabbing data from ${
-          sourceDBApp.appCheck().app.name
-        } and its uid is ${userFromSource.uid}`
+        `User doesn't exist in destination, grabbing data from ${sourceDBApp.name} and its email is ${userFromSource.email}`
       );
 
       let passwordHashSetup: dPasswordHash;
-      const projectId = sourceDBApp.options.projectId!;
+      const projectId = sourceDBApp.name;
       try {
+        console.log("Project ID for HASH", projectId);
         passwordHashSetup = setup[projectId];
         if (Object.keys(passwordHashSetup).length === 0) {
           console.error(
@@ -561,23 +857,42 @@ const createUserAuthInDestination = async (
           passwordSalt: Buffer.from(userPasswordData.passwordSalt, "base64"),
         },
       ];
-
-      await destDBApp.auth().importUsers(userImportRecords, {
-        hash: {
-          algorithm: "SCRYPT",
-          // All the parameters below can be obtained from the Firebase Console's users section.
-          // Must be provided in a byte buffer.
-          key: Buffer.from(passwordHashSetup.base64_signer_key, "base64"),
-          saltSeparator: Buffer.from(
-            passwordHashSetup.base64_salt_separator,
-            "base64"
-          ),
-          rounds: 8,
-          memoryCost: 14,
-        },
-      });
+      if (userData.personali.email === "mankar.saurabh@gmail.com") {
+        console.log(`Data for ${userData.personali.email}`);
+        console.log(`userImportRecords ${JSON.stringify(userPasswordData)}`);
+      }
+      setTimeout(async () => {
+        await destDBApp.auth().importUsers(userImportRecords, {
+          hash: {
+            algorithm: "SCRYPT",
+            // All the parameters below can be obtained from the Firebase Console's users section.
+            // Must be provided in a byte buffer.
+            key: Buffer.from(passwordHashSetup.base64_signer_key, "base64"),
+            saltSeparator: Buffer.from(
+              passwordHashSetup.base64_salt_separator,
+              "base64"
+            ),
+            rounds: 8,
+            memoryCost: 14,
+          },
+        });
+      }, 1000);
     } catch (err) {
-      console.error("Error while Creating User Authentication Information!!");
+      console.error(
+        `Error while Creating User Authentication Information for ${userData.personali.email} !!`
+      );
+      try {
+        await destDBApp
+          .firestore()
+          .collection(WEBFPATH.USERS)
+          .doc(userData._id)
+          .delete();
+        console.log(
+          `Since Authentication wasn't created, deleting the user document for ${userData.personali.email} with uid ${userData._id}`
+        );
+      } catch (err) {
+        console.log("User Document wasn't created. It's all good!!");
+      }
     }
   }
 };
@@ -612,9 +927,9 @@ const getUserPasswordHash = async (
   return passwordData;
 };
 
-function mapListBuilderToContactGroups(
+const mapListBuilderToContactGroups = (
   collDoc: firestore.QueryDocumentSnapshot<firestore.DocumentData>
-): ContactGroupSchema[] {
+): ContactGroupSchema[] => {
   const mobileData = <MobileUserSchema>collDoc.data();
   const results: ContactGroupSchema[] = [];
   const lists = mobileData.listBuilder?.lists
@@ -626,10 +941,12 @@ function mapListBuilderToContactGroups(
       tempData._id = list.id === "Build My List" ? "BML" : list.id;
       tempData.groupType = "list";
       tempData.name = list.title;
-      tempData.contacts = tempData.contacts ? tempData.contacts : [];
-      list.contacts.forEach((contact) => {
-        tempData.contacts.push(contact.recordID);
-      });
+      tempData.contacts = [];
+      if (list.contacts) {
+        list.contacts.forEach((contact) => {
+          tempData.contacts.push(contact.recordID);
+        });
+      }
       tempData.shareTo = mobileData.listBuilder?.shareTo
         ? mobileData.listBuilder.shareTo
         : [];
@@ -638,11 +955,11 @@ function mapListBuilderToContactGroups(
     //console.log("results in mapLB TO CG :>> ", JSON.stringify(results));
   }
   return results;
-}
+};
 
-function mapListBuilderToContacts(
+const mapListBuilderToContacts = (
   collDoc: firestore.QueryDocumentSnapshot<firestore.DocumentData>
-): dContactSuggestion[] {
+): dContactSuggestion[] => {
   const mobileData = <MobileUserSchema>collDoc.data();
   const results: dContactSuggestion[] = [];
   const lists = mobileData.listBuilder?.lists
@@ -650,36 +967,39 @@ function mapListBuilderToContacts(
     : [];
   if (lists.length > 0) {
     lists.forEach((list) => {
-      list.contacts.forEach((contact) => {
-        let tempData: dContactSuggestion = <dContactSuggestion>{};
-        tempData._cid = contact.recordID;
-        tempData.displayName =
-          contact.givenName + " " + contact.familyName
-            ? contact.givenName + " " + contact.familyName
+      if (list.contacts) {
+        list.contacts.forEach((contact) => {
+          if (!contact.recordID) return;
+          let tempData: dContactSuggestion = <dContactSuggestion>{};
+          tempData._cid = contact.recordID;
+          tempData.displayName =
+            contact.givenName + " " + contact.familyName
+              ? contact.givenName + " " + contact.familyName
+              : "";
+          tempData.phoneNumbers = [];
+          if (contact.phoneNumbers) {
+            contact.phoneNumbers.forEach((phoneNumber, index) => {
+              tempData.phoneNumbers.push({
+                ...phoneNumber,
+                id: index.toString(),
+              });
+            });
+          }
+          tempData.email =
+            contact.emailAddresses && contact.emailAddresses.length > 0
+              ? contact.emailAddresses[0].email
+              : "";
+          tempData.profileImage = contact.hasThumbnail
+            ? contact.thumbnailPath
             : "";
-        tempData.phoneNumbers = tempData.phoneNumbers
-          ? tempData.phoneNumbers
-          : [];
-        contact.phoneNumbers.forEach((phoneNumber, index) => {
-          tempData.phoneNumbers.push({
-            ...phoneNumber,
-            id: index.toString(),
-          });
+          tempData._uid = "";
+          tempData.pointers = "";
+          tempData.points = [];
+          tempData.listId = list.id === "Build My List" ? "BML" : list.id;
+          tempData.lanePositionId = "0:0";
+          results.push(tempData);
         });
-        tempData.email =
-          contact.emailAddresses && contact.emailAddresses.length > 0
-            ? contact.emailAddresses[0].email
-            : "";
-        tempData.profileImage = contact.hasThumbnail
-          ? contact.thumbnailPath
-          : "";
-        tempData._uid = "";
-        tempData.pointers = "";
-        tempData.points = [];
-        tempData.listId = list.id === "Build My List" ? "BML" : list.id;
-        tempData.lanePositionId = "0:0";
-        results.push(tempData);
-      });
+      }
     });
   }
   // console.log(
@@ -687,27 +1007,77 @@ function mapListBuilderToContacts(
   //   JSON.stringify(results)
   // );
   return results;
-}
+};
 
 const getPageIdFromName = async (sourceApp: admin.app.App, topage: string) => {
   const sourceDB = sourceApp.firestore();
   if (topage) {
-    let ref;
-    try {
-      ref = await sourceDB
+    console.log("topage before check ", topage);
+    if (topage && topage?.includes("page:")) {
+      const newPageId = topage?.replace("page:", "");
+      // console.log("beforepageId " + newPageId);
+      const newPageRef = await sourceDB
         .collection(MOBFPATH.PAGES)
-        .where("name", "==", topage)
+        .where("_id", "==", newPageId)
         .get();
-    } catch (err) {
-      console.log(
-        `Error while finding topage with name ${topage} for mobile -> Web Data Sync`
-      );
+      try {
+        topage = "page:" + newPageRef.docs[0].id;
+      } catch (err) {
+        topage = "";
+      }
+      // console.log("Updated Page Id is " + topage);
+    } else {
+      // console.log("topage passed is ", topage);
+      let ref;
+      try {
+        ref = await sourceDB
+          .collection(MOBFPATH.PAGES)
+          .where("name", "==", topage)
+          .get();
+      } catch (err) {
+        console.log(
+          `Error while finding topage with name ${topage} for mobile -> Web Data Sync`
+        );
+      }
+      //NOTE If multiple pages with same name then grab the first one.
+      //ref && console.log("Test for page Ref", JSON.stringify(ref.docs[0]));
+      if (ref && ref.docs.length > 0) {
+        const mobPageId = ref ? ref.docs[0].data().id : "";
+        topage = mobPageId ? "page:" + mobPageId : "";
+        // console.log("mobPageId", mobPageId);
+      } else {
+        topage = "";
+      }
     }
-    //NOTE If multiple pages with same name then grab the first one.
-    const mobPageId = ref?.docs[0].id;
-    topage = mobPageId ? "page:" + mobPageId : "";
-    console.log("mappedData.topage for the web is :>> ", topage);
+
+    console.log(`mappedData.topage ${topage} for the web is :>> ${topage}`);
   }
 
   return topage;
+};
+
+const cleanUpDestinationAuthUsers = async (
+  destDBApp: admin.app.App,
+  nextPageToken?: any
+) => {
+  // List batch of users, 1000 at a time.
+  const passwordData = {} as dUserPWDData;
+  const listUsersResult = await destDBApp.auth().listUsers(1000, nextPageToken);
+
+  const foundUser: string[] = [];
+  listUsersResult.users.forEach((user) => {
+    user.uid && foundUser.push(user.uid);
+  });
+  //foundUser?.metadata.
+  if (foundUser.length > 0) {
+    setTimeout(async () => {
+      await destDBApp.auth().deleteUsers(foundUser);
+    }, 5000);
+  }
+  if (listUsersResult.pageToken) {
+    // List next batch of users.
+    await cleanUpDestinationAuthUsers(destDBApp, listUsersResult.pageToken);
+  }
+
+  return passwordData;
 };

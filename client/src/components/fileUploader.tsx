@@ -17,7 +17,7 @@ const FileUploader = (props: any) => {
   };
   return (
     <>
-      <button className={props.className} onClick={handleClick}>
+      <button className={props.className} onClick={handleClick} {...props}>
         Choose a .json file
       </button>
       <input

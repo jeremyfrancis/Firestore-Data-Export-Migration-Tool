@@ -7,6 +7,8 @@ export interface iDBList {
 
 export enum APIROUTE {
   "MIGRATION" = "/migration",
+  "CLEARAUTHRECORDS" = "/clearAuth",
+  "FIXMOBILEDATA" = "/fixMobileData",
 }
 
 export interface iCollection {

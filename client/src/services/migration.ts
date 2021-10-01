@@ -10,8 +10,42 @@ interface migrationSchema {
   mapUserSchema: boolean;
   mapScoreboardSchema: boolean;
   clone: boolean;
+  testing: boolean;
   destinationDBSAFile: File;
 }
+
+interface dCleanupMobileData {
+  fixMobileData: boolean;
+  selectedDBList: iDBList[];
+}
+interface dClearAuthRecords {
+  deleteAuthRecords: boolean;
+  destinationDBSAFile: File;
+}
+export const handleCleanupDupePages = async (state: dCleanupMobileData) => {
+  const { fixMobileData, selectedDBList } = state;
+  if (!fixMobileData) return;
+
+  console.log("**Cleaning up duplicate pages");
+
+  const payload = {
+    fixMobileData,
+    selectedDBList,
+  };
+  console.log(JSON.stringify(payload));
+
+  await fetch(APIROUTE.FIXMOBILEDATA, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: {
+      "content-type": "application/json",
+      Authorization: "Bearer token",
+    },
+  }).then(async (res: any) => {
+    const statusText = await res.text();
+    alert("Status is " + res.status + " and status text :" + statusText);
+  });
+};
 
 export const handleStartMigration = async (state: migrationSchema) => {
   const {
@@ -20,6 +54,7 @@ export const handleStartMigration = async (state: migrationSchema) => {
     mapUserSchema,
     mapScoreboardSchema,
     clone,
+    testing,
     destinationDBSAFile: destDBSAFile,
   } = state;
   if (dbList.length === 0) return;
@@ -34,10 +69,36 @@ export const handleStartMigration = async (state: migrationSchema) => {
     mapUserSchema,
     mapScoreboardSchema,
     clone,
+    testing,
     destDBSAFile: destDBSAFileData,
   };
 
   await fetch(APIROUTE.MIGRATION, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: {
+      "content-type": "application/json",
+      Authorization: "Bearer token",
+    },
+  }).then(async (res: any) => {
+    const statusText = await res.text();
+    alert("Status is " + res.status + " and status text :" + statusText);
+  });
+};
+
+export const handleClearAuthRecords = async (state: dClearAuthRecords) => {
+  const { deleteAuthRecords, destinationDBSAFile: destDBSAFile } = state;
+  if (!deleteAuthRecords) return;
+
+  console.log("**CLEARING OF AUTH RECORDS");
+
+  const destDBSAFileData = await destDBSAFile.text();
+
+  const payload = {
+    deleteAuthRecords,
+    destDBSAFile: destDBSAFileData,
+  };
+  await fetch(APIROUTE.CLEARAUTHRECORDS, {
     method: "POST",
     body: JSON.stringify(payload),
     headers: {

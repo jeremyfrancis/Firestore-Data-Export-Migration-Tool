@@ -1,5 +1,6 @@
 import * as Contacts from "expo-contacts";
 import firebase from "firebase";
+import { firestore } from "firebase-admin";
 export interface iDBList {
   id?: number;
   projectId?: string;
@@ -56,10 +57,11 @@ export interface WebUserSchema {
   theme: THEME;
   personali: dPersonali;
   growth?: dGrowth;
+  allLevelsCompleted: boolean;
   roles?: FRBS_ROLE[];
   completedLevelItems: string[];
-  createdAt?: Date;
-  notifications?: { lastRead: Date };
+  createdAt?: firestore.FieldValue;
+  notifications?: { lastRead: firestore.FieldValue };
   /** for DEV */
   imitate?: boolean;
   /** @deprecated maybe? move to personali */
@@ -71,6 +73,7 @@ export interface WebUserSchema {
   admin?: boolean;
   /** @deprecated maybe? switch to roles */
   banned?: boolean;
+  lastSignIn: firestore.FieldValue;
   oldMobileSchemaData: any;
 }
 
@@ -133,8 +136,8 @@ export interface MobileUserSchema {
   email?: string;
   phoneNumber?: string;
   profileImage?: string;
-  createdAt: Date;
-  lastSignIn: Date;
+  createdAt: firestore.FieldValue;
+  lastSignIn: firestore.FieldValue;
   appVersion: string;
   /**
    * Whether or not the user has access to admin functionalities throughout the app
@@ -153,14 +156,14 @@ export interface MobileUserSchema {
    */
   levels?: { [key: string]: any };
   listBuilder?: {
-    lists: dListBuilderList[];
+    lists: dMobListBuilderList[];
     /**
      * All the user ids this user has given permission to view their personal profile, specifically their contact lists
      */
     shareTo: string[];
   };
   notifications?: {
-    lastRead: Date;
+    lastRead: firestore.FieldValue;
   };
   /**
    * If user is currently imitating/simulating
@@ -177,7 +180,7 @@ export interface dTeam {
   /**@description This is the name of the teampage located in pages collection */
   teamName: string;
 }
-export interface dListBuilderList {
+export interface dMobListBuilderList {
   title: string;
   id: string;
   contacts: Contact[];
@@ -279,8 +282,151 @@ export interface Contact {
 
 //#endregion
 
-export interface MediaPageItemSchema {
-  _id?: string;
+export interface MobMediaPageSchema {
+  /**
+   * Project-id from the firebase, this is used for collaboration feature
+   */
+  teamID?: string;
+
+  /**
+   * This field is equal to appTitle in "variables" document under "config" collection
+   */
+  teamName?: string;
+
+  /**
+   * Boolean field indicating if this page is shared for collaboration with other apps
+   */
+  collaboration: boolean;
+
+  /**
+   * Field only needed by collaboration logic.
+   */
+  api?: string;
+  id: string;
+
+  key?: string;
+  /**
+   * This is id for collabTeams collection in ICF-AppTakeOff project
+   */
+  collabPageId?: string;
+  /**
+   * If this is a team that has a zoom link or ID it can go here
+   */
+  zoom?: string;
+  /**
+   * If the page requires a password to get into
+   */
+  password?: string | number;
+  /**
+   * Configuration for how the page might display and function in the "Media" area of the app
+   */
+  mediaItem: {
+    /**
+     * @deprecated Image displays as is now
+     */
+    imageColor?: string;
+    /**
+     * @deprecated There is only 1 default color now
+     */
+    color?: string;
+    /**
+     * Open a URL instead of a page
+     */
+    link?: string;
+    /**
+     * Give the page a custom icon
+     */
+    logo?: string;
+    /**
+     * Use an icon that the app supports locally
+     */
+    presetLogo?: string;
+    /**
+     * Whether or not this media page represents a team
+     */
+    team?: boolean;
+    /**
+     * If true or "true", will be displayed directly on the "Media" area of the app
+     */
+    visible?: boolean | string;
+  };
+  /**
+   * The name of the page :D
+   */
+  name: string;
+  /**
+   * Configuration for how the page might display and function in the home page of the app
+   * @deprecated Now using social feature to control content of the home screen
+   */
+  pageItem: {
+    description?: string;
+    imageUrl?: string;
+    uploadImage?: string;
+    visible: boolean | string;
+    link?: string;
+  };
+  /**
+   * Order in which the page might show up on the "Media" area of the app.
+   * For example, a media page with position -3 will show up before one with position 1
+   */
+  position: number;
+  /**
+   * All of the content items the page contains
+   */
+  content?: dMobMediaPageItem[];
+  /**
+   * All the app tokens related to config
+   */
+  keys?: dMobConfigKeys;
+}
+
+export interface dMobConfigKeys {
+  calendarAccessToken?: string;
+  calendarId?: string;
+  dropbox?: string[];
+  vimeo?: VimeoToken[];
+}
+
+export interface dMobConfigVariables {
+  adminPassword: string;
+  appPassword: string;
+  appTakeoffShareURL?: string;
+  appTitle: string;
+  disableCalendar: boolean;
+  disableContactManager: boolean;
+  disableScoreboard: boolean;
+  disableMore: boolean;
+  enablePushNotifications: boolean;
+  googleDrive?: { folderId: string };
+  levels?: {
+    allowLevelSkipping?: boolean;
+    lockMedia?: boolean;
+  };
+  listBuilder: {
+    defaultLists: dMobListBuilderList[];
+  };
+  bmlQuestionnaire?: dMobQuestionScreenItem[];
+  releaseVersion?: string;
+  updateURL?: string;
+  reviewMode?: boolean;
+  videoCalls?: { title: string; meetingId: string }[];
+  welcomeMail?: string;
+}
+
+export interface dMobQuestionScreenItem {
+  id: string;
+  question: string;
+  screenType: string;
+  isActive: boolean;
+  canEdit: boolean;
+}
+
+export interface VimeoToken {
+  accessToken: string;
+  userId: string;
+}
+export interface dMobMediaPageItem {
+  id?: string;
   /**
    * The title of this item!
    */
@@ -306,10 +452,77 @@ export interface MediaPageItemSchema {
    * For example, an item with position -3 will show up before one with position 1
    */
   position: number;
-  /**
-   * Not yet being used (not in primerica-template currently)
-   */
+
   createdAt: FirebaseFirestore.FieldValue;
+}
+
+//#endregion
+
+//#region [region1] "possts" schema
+
+/**
+ * ### Posst Doc Schema
+ *
+ * ---
+ * @version 1.1.20
+ * @author  nguyenkhooi
+ * ---
+ * @example see MOCK_POSST
+ */
+export interface MobPosstSchema {
+  _pid: string;
+  author: {
+    _id: string;
+    /**
+     * @deprecated maybe since name & avatar might be changed
+     */
+    name: string;
+    /**
+     * @deprecated maybe since name & avatar might be changed
+     */
+    avatar: string;
+  };
+  body: string;
+  /**
+   * The doc id of the page to open
+   */
+  goToPage?: string;
+  /**
+   * @deprecated soon
+   */
+  media?: {
+    uri: string;
+    type: "image" | "video";
+  };
+  medias: {
+    uri: string;
+    type: "image" | "video";
+  }[];
+  createdAt: firebase.firestore.FieldValue;
+  updatedAt: firebase.firestore.FieldValue;
+  scheduledAt: firebase.firestore.FieldValue;
+  /**
+   * Array of uids who have liked the posst
+   */
+  likes: string[];
+  status: POSST_STATUS;
+  pinned: boolean;
+  /**
+   * The number of comments that there are, so you can know this without having to fetch the comments collection
+   */
+  commentCount: number;
+}
+
+export enum POSST_STATUS {
+  /**
+   * ###  Whether posst is posted or not
+   * -  Useful for scheduled posst
+   */
+  POSTED = "POSTED",
+  PENDING = "PENDING",
+  DELETED = "DELETED",
+  REPORTED = "REPORTED",
+  SCHEDULED = "SCHEDULED",
 }
 export interface dUserPWDData {
   uid: string;
@@ -330,12 +543,12 @@ export interface dListOfPasswordHash {
 }
 
 export enum WEBFPATH {
-  CONFIG = "config",
+  CONFIG = "configs",
   MORE = "more",
-  PAGES = "PAGES",
+  PAGES = "pages",
   POSSTS = "possts",
   COMMENTS = "comments",
-  SCOREBOARDS = "scoreboard",
+  SCOREBOARDS = "scoreboards",
   USERS = "users",
   CUSTOM_PAGE_CONTENT = "pageContent",
   CONTACT_GROUPS = "contact-groups",

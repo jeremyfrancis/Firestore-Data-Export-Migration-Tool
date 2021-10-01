@@ -1,7 +1,8 @@
 import React, { Component } from "react";
 import {
+  handleCleanupDupePages,
+  handleClearAuthRecords,
   handleStartMigration,
-  handleTestConnection,
 } from "../services/migration";
 import {
   getCollectionsList,
@@ -10,7 +11,6 @@ import {
   iDBList,
 } from "../services/migrationData";
 import FileUploader from "./fileUploader";
-
 class MigrationDashboard extends Component<any, any> {
   state = {
     dbList: getProdDBList(),
@@ -23,6 +23,9 @@ class MigrationDashboard extends Component<any, any> {
     mapUserSchema: false,
     mapScoreboardSchema: false,
     clone: false,
+    testing: false,
+    deleteAuthRecords: false,
+    fixMobileData: false,
   };
 
   handleSelectAll = () => {
@@ -56,7 +59,7 @@ class MigrationDashboard extends Component<any, any> {
 
   handleCBSelect = (db: iDBList) => {
     let selectedDBList = this.state.selectedDBList;
-
+    console.log(db);
     if (selectedDBList.length === 0) {
       this.state.selectedDBList.push(db);
     } else if (selectedDBList.find((x) => x.id === db.id)) {
@@ -87,7 +90,25 @@ class MigrationDashboard extends Component<any, any> {
       this.handleCollSelectAll();
       return;
     }
-    this.state.selectedColls.push(collection);
+    if (
+      this.state.selectedColls.find(
+        (c) => c.collectionName === collection.collectionName
+      )
+    ) {
+      const selColls = this.state.selectedColls.filter(
+        (c) => c.collectionName === collection.collectionName
+      );
+      this.setState(() => {
+        return { selectedColls: selColls };
+      });
+    } else {
+      const selColls = this.state.selectedColls;
+      selColls.push(collection);
+      this.setState(() => {
+        return { selectedColls: selColls };
+      });
+    }
+    console.log("List of current colls", this.state.selectedColls);
   };
 
   render() {
@@ -109,9 +130,27 @@ class MigrationDashboard extends Component<any, any> {
                     onClick={this.handleSelectAll}
                     className="btn btn-secondary btn-sm"
                     id="btn-selAll"
+                    style={{ margin: 10 }}
                   >
                     {this.state.buttonText}
                   </button>
+                  {/* <input
+                    type="search"
+                    onChange={(prop: any) => {
+                      const newDBList =
+                        prop.target.value.length > 0
+                          ? this.state.dbList.filter((d) =>
+                              d.projectId?.includes(prop.target.value)
+                            )
+                          : getProdDBList();
+
+                      this.setState({ dbList: newDBList });
+                    }}
+                    onTouchCancel={() => {
+                      console.log("Clicked Cancel");
+                    }}
+                    style={{ fontSize: 20, paddingLeft: 10 }}
+                  /> */}
                 </div>
               </th>
               <th />
@@ -182,6 +221,7 @@ class MigrationDashboard extends Component<any, any> {
                     📂
                   </span>
                   <FileUploader
+                    disabled={this.state.fixMobileData}
                     className="btn btn-primary btn-sm"
                     handleFile={async (item: File) =>
                       this.setState({
@@ -223,6 +263,10 @@ class MigrationDashboard extends Component<any, any> {
                             value=""
                             id={"chk-" + collection.id}
                             aria-label="Checkbox for following text input"
+                            disabled={
+                              this.state.fixMobileData ||
+                              this.state.deleteAuthRecords
+                            }
                             onChange={() => {
                               this.handleCollSelect(collection);
                             }}
@@ -266,6 +310,27 @@ class MigrationDashboard extends Component<any, any> {
                       Start Migration
                     </button>
                     <button
+                      onClick={() => {
+                        if (
+                          this.state.deleteAuthRecords &&
+                          this.state.destinationDBSAFile.name
+                        ) {
+                          handleClearAuthRecords({
+                            deleteAuthRecords: this.state.deleteAuthRecords,
+                            destinationDBSAFile: this.state.destinationDBSAFile,
+                          });
+                          // alert(
+                          //   "This Dangerous function is commented out at the moment!!"
+                          // );
+                        } else {
+                          alert("Yeah sure let's delete imaginary users!!");
+                        }
+                      }}
+                      className="btn btn-primary ms-2"
+                    >
+                      Clear Auth Records
+                    </button>
+                    {/* <button
                       type="button"
                       className="btn btn-warning ms-2"
                       onClick={() => {
@@ -274,6 +339,27 @@ class MigrationDashboard extends Component<any, any> {
                       }}
                     >
                       Test Connection(s)
+                    </button> */}
+                    <button
+                      type="button"
+                      className="btn btn-danger ms-2"
+                      onClick={() => {
+                        if (
+                          this.state.fixMobileData &&
+                          this.state.selectedDBList.length === 1
+                        ) {
+                          handleCleanupDupePages({
+                            fixMobileData: this.state.fixMobileData,
+                            selectedDBList: this.state.selectedDBList,
+                          });
+                        } else {
+                          alert(
+                            "Warning ☢️\n1. Make sure Option is selected in Other Settings\n2. Only 1 Database can be selected for this operation."
+                          );
+                        }
+                      }}
+                    >
+                      Cleanup Dupe Page Records
                     </button>
                     <br />
                     <div className="form-check form-switch form-control-lg ms-2 border border-secondary text-start">
@@ -319,9 +405,33 @@ class MigrationDashboard extends Component<any, any> {
                       </label>
                     </div>
                     <br />
-                    <div className="form-check form-switch form-control-lg ms-2 border border-secondary text-start">
-                      <p className="fs-3 text-sm text-primary">
-                        {"Other Settings"}
+                    <div
+                      style={{
+                        backgroundColor: `${
+                          this.state.testing
+                            ? "lightgreen"
+                            : this.state.deleteAuthRecords
+                            ? "#faa000"
+                            : this.state.testing && this.state.deleteAuthRecords
+                            ? "#faa000"
+                            : "white"
+                        }`,
+                      }}
+                      className="form-check form-switch form-control-lg ms-2 border border-secondary text-start"
+                    >
+                      <p
+                        className="fs-3 text-sm text-primary"
+                        style={{
+                          color: this.state.deleteAuthRecords ? "red" : "",
+                        }}
+                      >
+                        {`${
+                          this.state.testing
+                            ? "Testing Mode ON"
+                            : this.state.deleteAuthRecords
+                            ? "DANGER ⛔️"
+                            : "Other Settings"
+                        }`}
                       </p>
 
                       <input
@@ -340,6 +450,86 @@ class MigrationDashboard extends Component<any, any> {
                         htmlFor="flexSwitchCheckDefault"
                       >
                         Clone from this Database ?
+                      </label>
+                      <br />
+                      <input
+                        className="form-check-input m-1"
+                        type="checkbox"
+                        id="testing"
+                        checked={this.state.testing}
+                        onChange={() => {
+                          this.setState(() => {
+                            console.log(`testing ${this.state.testing}`);
+                            return { testing: !this.state.testing };
+                          });
+                        }}
+                      />
+                      <label
+                        className="form-check-label ms-1"
+                        htmlFor="flexSwitchCheckDefault"
+                      >
+                        Testing Mode
+                      </label>
+                      <br />
+                      <input
+                        className="form-check-input m-1"
+                        type="checkbox"
+                        id="deleteAuthRecords"
+                        checked={this.state.deleteAuthRecords}
+                        onChange={() => {
+                          this.setState(() => {
+                            console.log(
+                              `deleteAuthRecords ${this.state.deleteAuthRecords}`
+                            );
+                            return {
+                              deleteAuthRecords: !this.state.deleteAuthRecords,
+                            };
+                          });
+                        }}
+                      />
+                      <label
+                        className="form-check-label ms-1"
+                        htmlFor="flexSwitchCheckDefault"
+                        style={{
+                          color: "red",
+                        }}
+                      >
+                        {"Delete Auth Records?\n (**CAREFUL)"}
+                      </label>
+                      <br />
+                      <label
+                        className="form-check-label ms-1"
+                        htmlFor="flexSwitchCheckDefault"
+                      >
+                        Testing Mode
+                      </label>
+                      <br />
+                      <input
+                        className="form-check-input m-1"
+                        type="checkbox"
+                        id="fixMobileData"
+                        checked={this.state.fixMobileData}
+                        onChange={() => {
+                          this.setState(() => {
+                            console.log(
+                              `fixMobileData ${this.state.fixMobileData}`
+                            );
+                            return {
+                              fixMobileData: !this.state.fixMobileData,
+                            };
+                          });
+                        }}
+                      />
+                      <label
+                        className="form-check-label ms-1"
+                        htmlFor="flexSwitchCheckDefault"
+                        style={{
+                          color: "ButtonText",
+                        }}
+                      >
+                        {
+                          "Cleanup duplicate pages for selected Database\n (**CAREFUL)"
+                        }
                       </label>
                       <br />
                     </div>

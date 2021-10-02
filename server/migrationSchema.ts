@@ -411,6 +411,7 @@ export interface dMobConfigVariables {
   reviewMode?: boolean;
   videoCalls?: { title: string; meetingId: string }[];
   welcomeMail?: string;
+  isDataSyncEnabled?: boolean;
 }
 
 export interface dMobQuestionScreenItem {

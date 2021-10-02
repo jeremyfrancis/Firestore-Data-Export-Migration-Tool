@@ -379,6 +379,7 @@ router.post("/migration", async (req, res) => {
               //NOTE:We are moving defaultLists to code instead of firestore
               if (tempCollDocId.includes("variable")) {
                 outCollData.subdomain = "";
+                outCollData.isDataSyncEnabled = false;
                 delete outCollData.listBuilder;
               }
 

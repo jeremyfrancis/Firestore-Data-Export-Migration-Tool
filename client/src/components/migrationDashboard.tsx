@@ -359,7 +359,7 @@ class MigrationDashboard extends Component<any, any> {
                         }
                       }}
                     >
-                      Cleanup Dupe Page Records
+                      {"Cleanup Dupe Page & More Records"}
                     </button>
                     <br />
                     <div className="form-check form-switch form-control-lg ms-2 border border-secondary text-start">
@@ -528,7 +528,7 @@ class MigrationDashboard extends Component<any, any> {
                         }}
                       >
                         {
-                          "Cleanup duplicate pages for selected Database\n (**CAREFUL)"
+                          "Cleanup duplicate pages & 'more' for selected Database\n (**CAREFUL)"
                         }
                       </label>
                       <br />

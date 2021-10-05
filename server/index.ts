@@ -5,6 +5,7 @@ import {
   ContactGroupSchema,
   dContactSuggestion,
   dMobMediaPageItem,
+  dMoreItem,
   dPasswordHash,
   dUserPWDData,
   FRBS_ROLE,
@@ -97,10 +98,37 @@ router.post("/fixMobileData", async (req, res) => {
         priPreloadedPageIds.push(doc.id);
       });
     }
+    //! STEP 1.1: Get Copy of all the "more" ids from Primerica Preloaded Content
+    const priPreloadedMoreIds: string[] = [];
+    const moreRefPri = await priPreloadedDB.collection(MOBFPATH.MORE).get();
+    if (moreRefPri) {
+      moreRefPri.docs.forEach((doc) => {
+        priPreloadedMoreIds.push(doc.id);
+      });
+    }
 
     console.log("pageIdsFrom", JSON.stringify(priPreloadedPageIds));
     const posstRef = sourceDB.collection(MOBFPATH.POSSTS);
 
+    //!STEP 1.2 : Compare the moreIds for the selected DB with ids from STEP 1.1
+    const moreRef = await sourceDB.collection(MOBFPATH.MORE).get();
+    moreRef?.docs.forEach(async (oldMoreDoc) => {
+      if (priPreloadedMoreIds.includes(oldMoreDoc.id)) {
+        const newMoreRef = sourceDB?.collection(MOBFPATH.MORE).doc();
+        if (newMoreRef) {
+          const newMoreData = <dMoreItem>{ ...oldMoreDoc.data() };
+          console.log(
+            `Old "MORE" Id ${oldMoreDoc.id} and its new "more" id will be ${newMoreRef.id}`
+          );
+          await sourceDB
+            .collection(MOBFPATH.MORE)
+            .doc(newMoreRef.id)
+            .set(newMoreData);
+
+          await sourceDB.collection(MOBFPATH.MORE).doc(oldMoreDoc.id).delete();
+        }
+      }
+    });
     //!STEP 2: Compare the pageIds for the selected DB with ids from Step 1.
     //*If the pageId exists then create a copy of that page with new ID but keep
     //*the pageContentId the same.
@@ -175,7 +203,8 @@ router.post("/fixMobileData", async (req, res) => {
       }
     });
 
-    res.send(`Pages Data cleaned up for the app ${sourceDBApp?.name}`);
+    res.send(`Pages Data & More cleaned up for the app ${sourceDBApp?.name}`);
+
     return;
   } else {
     res.status(444);
@@ -478,7 +507,8 @@ router.post("/migration", async (req, res) => {
                       .doc(tempCollDocId)
                       .collection(WEBFPATH.CONTACT_GROUPS)
                       .doc(cgData._id);
-                    if (docRef) destBatch?.set(docRef, cgData, { merge: true });
+                    if (docRef && cgData)
+                      destBatch?.set(docRef, cgData, { merge: true });
                   });
 
                   listOfContacts.forEach((contactData) => {
@@ -486,13 +516,17 @@ router.post("/migration", async (req, res) => {
                     // console.log(
                     //   `With contactData contactData._cid is ${contactData._cid} tempColl ${webCollName} is and tempCollDocId is ${tempCollDocId}`
                     // );
+
                     const docRef = destFS
                       ?.collection(webCollName)
                       .doc(tempCollDocId)
                       .collection(WEBFPATH.CONTACTS)
                       .doc(contactData._cid);
-                    if (docRef)
+
+                    if (docRef && contactData) {
+                      console.log("CONTACT IS ", JSON.stringify(contactData));
                       destBatch?.set(docRef, contactData, { merge: true });
+                    }
                   });
                   await destBatch?.commit();
                 } catch (err) {
@@ -847,7 +881,8 @@ const createUserAuthInDestination = async (
         return;
       }
       const userPasswordData = await getUserPasswordHash(userId, sourceDBApp);
-
+      !userPasswordData &&
+        console.log("NOT ABLE TO RETRIEVE userPasswordData for ", userEmail);
       const userImportRecords = [
         {
           uid: userFromSource.uid,
@@ -939,15 +974,21 @@ const mapListBuilderToContactGroups = (
   if (lists.length > 0) {
     lists.forEach((list) => {
       let tempData: ContactGroupSchema = <ContactGroupSchema>{};
-      tempData._id = list.id === "Build My List" ? "BML" : list.id;
+      if (!list.id && !list.title) return;
+      tempData._id = list.title === "Build My List" ? "BML" : list.id;
       tempData.groupType = "list";
       tempData.name = list.title;
       tempData.contacts = [];
-      if (list.contacts) {
-        list.contacts.forEach((contact) => {
-          tempData.contacts.push(contact.recordID);
+      if (
+        Array.isArray(list?.contacts) &&
+        list?.contacts &&
+        list?.contacts?.length > 0
+      ) {
+        list?.contacts.forEach((contact) => {
+          if (contact.recordID) tempData.contacts.push(contact.recordID);
         });
       }
+
       tempData.shareTo = mobileData.listBuilder?.shareTo
         ? mobileData.listBuilder.shareTo
         : [];
@@ -968,35 +1009,40 @@ const mapListBuilderToContacts = (
     : [];
   if (lists.length > 0) {
     lists.forEach((list) => {
-      if (list.contacts) {
+      if (
+        Array.isArray(list?.contacts) &&
+        list?.contacts &&
+        list?.contacts?.length > 0
+      ) {
         list.contacts.forEach((contact) => {
           if (!contact.recordID) return;
           let tempData: dContactSuggestion = <dContactSuggestion>{};
           tempData._cid = contact.recordID;
-          tempData.displayName =
-            contact.givenName + " " + contact.familyName
-              ? contact.givenName + " " + contact.familyName
-              : "";
+          if (contact.givenName) tempData.displayName = contact.givenName + " ";
+          if (contact.familyName) tempData.displayName += contact.familyName;
+          if (!tempData.displayName) tempData.displayName = "Unknown";
           tempData.phoneNumbers = [];
           if (contact.phoneNumbers) {
-            contact.phoneNumbers.forEach((phoneNumber, index) => {
+            contact.phoneNumbers?.forEach((phoneNumber, index) => {
               tempData.phoneNumbers.push({
                 ...phoneNumber,
                 id: index.toString(),
               });
             });
           }
-          tempData.email =
-            contact.emailAddresses && contact.emailAddresses.length > 0
-              ? contact.emailAddresses[0].email
-              : "";
+          if (contact.emailAddresses) {
+            tempData.email =
+              contact?.emailAddresses && contact?.emailAddresses.length > 0
+                ? contact.emailAddresses[0].email
+                : "";
+          }
           tempData.profileImage = contact.hasThumbnail
             ? contact.thumbnailPath
             : "";
-          tempData._uid = "";
-          tempData.pointers = "";
-          tempData.points = [];
-          tempData.listId = list.id === "Build My List" ? "BML" : list.id;
+          // tempData._uid = "";
+          // tempData.pointers = "";
+          // tempData.points = [];
+          tempData.listId = list.title === "Build My List" ? "BML" : list.id;
           tempData.lanePositionId = "0:0";
           results.push(tempData);
         });
@@ -1013,7 +1059,7 @@ const mapListBuilderToContacts = (
 const getPageIdFromName = async (sourceApp: admin.app.App, topage: string) => {
   const sourceDB = sourceApp.firestore();
   if (topage) {
-    console.log("topage before check ", topage);
+    // console.log("topage before check ", topage);
     if (topage && topage?.includes("page:")) {
       const newPageId = topage?.replace("page:", "");
       // console.log("beforepageId " + newPageId);
@@ -1051,7 +1097,7 @@ const getPageIdFromName = async (sourceApp: admin.app.App, topage: string) => {
       }
     }
 
-    console.log(`mappedData.topage ${topage} for the web is :>> ${topage}`);
+    // console.log(`mappedData.topage ${topage} for the web is :>> ${topage}`);
   }
 
   return topage;

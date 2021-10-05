@@ -414,6 +414,16 @@ export interface dMobConfigVariables {
   isDataSyncEnabled?: boolean;
 }
 
+export interface dMoreItem {
+  name: string;
+  position: number;
+  logo?: string;
+  iosLink?: string;
+  androidLink?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  otherLink?: string;
+}
 export interface dMobQuestionScreenItem {
   id: string;
   question: string;

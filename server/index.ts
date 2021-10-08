@@ -84,133 +84,177 @@ router.post("/fixMobileData", async (req, res) => {
     res.send("Cannot process more than 1 DB at a time!!");
   }
 
-  const sourceDBApp = initApp(sourceProjectId, "source");
-  const priPreloadedApp = initApp("preloaded-primerica-content", "source");
-  const priPreloadedDB = priPreloadedApp?.firestore();
-  const sourceDB = sourceDBApp?.firestore();
+  //NOTE Do not run this if running for MillerTime
+  if (!sourceProjectId.indexOf("millertime")) {
+    res.status(448);
+    res.send(
+      `Cannot run this process on Master Yoda, I mean MillerTime's app 😉`
+    );
+  }
 
-  if (fixMobileData && sourceDB && priPreloadedDB) {
-    //!STEP 1: Get the copy of all the document ids from Primerica Preloaded Content
-    const priPreloadedPageIds: string[] = [];
-    const pageRefPri = await priPreloadedDB.collection(MOBFPATH.PAGES).get();
-    if (pageRefPri) {
-      pageRefPri.docs.forEach((doc) => {
-        priPreloadedPageIds.push(doc.id);
-      });
-    }
-    //! STEP 1.1: Get Copy of all the "more" ids from Primerica Preloaded Content
-    const priPreloadedMoreIds: string[] = [];
-    const moreRefPri = await priPreloadedDB.collection(MOBFPATH.MORE).get();
-    if (moreRefPri) {
-      moreRefPri.docs.forEach((doc) => {
-        priPreloadedMoreIds.push(doc.id);
-      });
-    }
+  try {
+    const sourceDBApp = initApp(sourceProjectId, "source");
+    const priPreloadedApp = initApp("preloaded-primerica-content", "source");
+    const priPreloadedDB = priPreloadedApp?.firestore();
 
-    console.log("pageIdsFrom", JSON.stringify(priPreloadedPageIds));
-    const posstRef = sourceDB.collection(MOBFPATH.POSSTS);
+    const millertTimeApp = initApp("millertime-apptakeoff", "source");
+    const millerTimeDB = millertTimeApp?.firestore();
+    const sourceDB = sourceDBApp?.firestore();
 
-    //!STEP 1.2 : Compare the moreIds for the selected DB with ids from STEP 1.1
-    const moreRef = await sourceDB.collection(MOBFPATH.MORE).get();
-    moreRef?.docs.forEach(async (oldMoreDoc) => {
-      if (priPreloadedMoreIds.includes(oldMoreDoc.id)) {
-        const newMoreRef = sourceDB?.collection(MOBFPATH.MORE).doc();
-        if (newMoreRef) {
-          const newMoreData = <dMoreItem>{ ...oldMoreDoc.data() };
-          console.log(
-            `Old "MORE" Id ${oldMoreDoc.id} and its new "more" id will be ${newMoreRef.id}`
-          );
-          await sourceDB
-            .collection(MOBFPATH.MORE)
-            .doc(newMoreRef.id)
-            .set(newMoreData);
-
-          await sourceDB.collection(MOBFPATH.MORE).doc(oldMoreDoc.id).delete();
-        }
+    if (fixMobileData && sourceDB && priPreloadedDB && millerTimeDB) {
+      //!STEP 1: Get the copy of all the document ids from Primerica Preloaded Content & Miller Time
+      const priPreloadedAndMTPageIds: string[] = [];
+      const pageRefPri = await priPreloadedDB.collection(MOBFPATH.PAGES).get();
+      if (pageRefPri) {
+        pageRefPri.docs.forEach((doc) => {
+          priPreloadedAndMTPageIds.push(doc.id);
+        });
       }
-    });
-    //!STEP 2: Compare the pageIds for the selected DB with ids from Step 1.
-    //*If the pageId exists then create a copy of that page with new ID but keep
-    //*the pageContentId the same.
-    const srcAppPagesRef = await sourceDB.collection(MOBFPATH.PAGES).get();
-    srcAppPagesRef?.docs.forEach(async (srcPage) => {
-      //! TESTING ONLY FOR 1 PAGE FIRST
-      console.log(`The pageId inside the app is ${srcPage.id}`);
-      if (priPreloadedPageIds.includes(srcPage.id)) {
-        console.log("PAGE IDS MATCHED!!!");
-        const newPageDocRef = sourceDB?.collection(MOBFPATH.PAGES).doc();
-        if (newPageDocRef) {
-          const newPageData = <MobMediaPageSchema>{
-            ...srcPage.data(),
-            id: newPageDocRef.id,
-          };
 
-          console.log(
-            `Old Page Id ${
-              srcPage.id //+ ":" + srcPage.data().name
-            } and its new id will be ${newPageData.id}` //+ ":" + newPageData.name
-          );
-          await sourceDB
-            .collection(MOBFPATH.PAGES)
-            .doc(newPageDocRef.id)
-            .set(newPageData);
+      const pageRefMT = await millerTimeDB?.collection(MOBFPATH.PAGES).get();
+      if (pageRefMT) {
+        pageRefMT.docs.forEach((doc) => {
+          priPreloadedAndMTPageIds.push(doc.id);
+        });
+      }
 
-          const oldPageContentRef = await sourceDB
-            .collection(MOBFPATH.PAGES)
-            .doc(srcPage.id)
-            .collection(MOBFPATH.CUSTOM_PAGE_CONTENT)
-            .get();
+      //! STEP 1.1: Get Copy of all the "more" ids from Primerica Preloaded Content
+      const priPreloadedAndMTMoreIds: string[] = [];
+      const moreRefPri = await priPreloadedDB.collection(MOBFPATH.MORE).get();
+      const moreRefMT = await millerTimeDB.collection(MOBFPATH.MORE).get();
+      if (moreRefPri) {
+        moreRefPri.docs.forEach((doc) => {
+          priPreloadedAndMTMoreIds.push(doc.id);
+        });
+      }
+      if (moreRefMT) {
+        moreRefMT.docs.forEach((doc) => {
+          priPreloadedAndMTMoreIds.push(doc.id);
+        });
+      }
 
-          oldPageContentRef.docs.forEach(async (pageContent) => {
-            const oldPageContentData = pageContent.data();
+      console.log(
+        `Checking against ${
+          priPreloadedAndMTPageIds.length
+        } priPreloadedAndMTPageIds and they are ${JSON.stringify(
+          priPreloadedAndMTPageIds
+        )}`
+      );
+
+      const posstRef = sourceDB.collection(MOBFPATH.POSSTS);
+
+      //!STEP 1.2 : Compare the moreIds for the selected DB with ids from STEP 1.1
+      const moreRef = await sourceDB.collection(MOBFPATH.MORE).get();
+      moreRef?.docs.forEach(async (oldMoreDoc) => {
+        if (priPreloadedAndMTMoreIds.includes(oldMoreDoc.id)) {
+          const newMoreRef = sourceDB?.collection(MOBFPATH.MORE).doc();
+          if (newMoreRef) {
+            const newMoreData = <dMoreItem>{ ...oldMoreDoc.data() };
+            console.log(
+              `Old "MORE" Id ${oldMoreDoc.id} and its new "more" id will be ${newMoreRef.id}`
+            );
+            await sourceDB
+              .collection(MOBFPATH.MORE)
+              .doc(newMoreRef.id)
+              .set(newMoreData);
+
+            await sourceDB
+              .collection(MOBFPATH.MORE)
+              .doc(oldMoreDoc.id)
+              .delete();
+          }
+        }
+      });
+      //!STEP 2: Compare the pageIds for the selected DB with ids from Step 1.
+      //*If the pageId exists then create a copy of that page with new ID but keep
+      //*the pageContentId the same.
+      const srcAppPagesRef = await sourceDB.collection(MOBFPATH.PAGES).get();
+      srcAppPagesRef?.docs.forEach(async (srcPage) => {
+        //! TESTING ONLY FOR 1 PAGE FIRST
+        console.log(`The pageId inside the app is ${srcPage.id}`);
+        if (priPreloadedAndMTPageIds.includes(srcPage.id)) {
+          console.log("PAGE IDS MATCHED!!!");
+          const newPageDocRef = sourceDB?.collection(MOBFPATH.PAGES).doc();
+          if (newPageDocRef) {
+            const newPageData = <MobMediaPageSchema>{
+              ...srcPage.data(),
+              teamID: sourceProjectId,
+              id: newPageDocRef.id,
+            };
+
+            console.log(
+              `Old Page Id ${
+                srcPage.id //+ ":" + srcPage.data().name
+              } and its new id will be ${newPageData.id}` //+ ":" + newPageData.name
+            );
             await sourceDB
               .collection(MOBFPATH.PAGES)
-              .doc(newPageData.id)
-              .collection(MOBFPATH.CUSTOM_PAGE_CONTENT)
-              .doc(pageContent.id)
-              .set(oldPageContentData);
+              .doc(newPageDocRef.id)
+              .set(newPageData);
 
-            //! Delete the pageContent contents of old duplicate page
-            await sourceDB
+            const oldPageContentRef = await sourceDB
               .collection(MOBFPATH.PAGES)
               .doc(srcPage.id)
               .collection(MOBFPATH.CUSTOM_PAGE_CONTENT)
-              .doc(pageContent.id)
-              .delete();
-          });
+              .get();
 
-          //!STEP 3: For each newly created Page, save the new id and old id for updating the references
-          //!STEP 4: Update the reference in possts
-          const posstDocRef = await posstRef
-            .where("goToPage", "==", srcPage.id)
-            .get();
-          posstDocRef.docs.forEach((posst) => {
-            const posstData = <MobPosstSchema>{
-              ...posst.data(),
-              goToPage: newPageData.id,
-            };
-            console.log(
-              `Posst that will be affected by this is ${posst.id} and new goToPage will be ${newPageData.id}`
-            );
-            posstRef.doc(posst.id).set(posstData, { merge: true });
-          });
+            oldPageContentRef.docs.forEach(async (pageContent) => {
+              const oldPageContentData = pageContent.data();
+              await sourceDB
+                .collection(MOBFPATH.PAGES)
+                .doc(newPageData.id)
+                .collection(MOBFPATH.CUSTOM_PAGE_CONTENT)
+                .doc(pageContent.id)
+                .set(oldPageContentData);
 
-          //!Step 5: Delete the old Page Document
-          await sourceDB.collection(MOBFPATH.PAGES).doc(srcPage.id).delete();
+              //! Delete the pageContent contents of old duplicate page
+              await sourceDB
+                .collection(MOBFPATH.PAGES)
+                .doc(srcPage.id)
+                .collection(MOBFPATH.CUSTOM_PAGE_CONTENT)
+                .doc(pageContent.id)
+                .delete();
+            });
+
+            //!STEP 3: For each newly created Page, save the new id and old id for updating the references
+            //!STEP 4: Update the reference in possts
+            const posstDocRef = await posstRef
+              .where("goToPage", "==", srcPage.id)
+              .get();
+            posstDocRef.docs.forEach((posst) => {
+              const posstData = <MobPosstSchema>{
+                ...posst.data(),
+                goToPage: newPageData.id,
+              };
+              console.log(
+                `Posst that will be affected by this is ${posst.id} and new goToPage will be ${newPageData.id}`
+              );
+              posstRef.doc(posst.id).set(posstData, { merge: true });
+            });
+
+            //!Step 5: Delete the old Page Document
+            await sourceDB.collection(MOBFPATH.PAGES).doc(srcPage.id).delete();
+          }
+        } else {
+          console.log(
+            `PageId ${srcPage.id} doesn't exist in Preloaded Content or Miller Time`
+          );
         }
-      } else {
-        console.log(`PageId ${srcPage.id} doesn't exist in Preloaded Content`);
-      }
-    });
+      });
 
-    res.send(`Pages Data & More cleaned up for the app ${sourceDBApp?.name}`);
+      res.send(`Pages Data & More cleaned up for the app ${sourceDBApp?.name}`);
 
-    return;
-  } else {
-    res.status(444);
-    res.send(
-      `Error while cleaning up duplicate pages for ${sourceDBApp?.name}`
-    );
+      return;
+    } else {
+      res.status(444);
+      res.send(
+        `Error while cleaning up duplicate pages for ${sourceDBApp?.name}`
+      );
+      return;
+    }
+  } catch (err) {
+    res.status(445);
+    res.send("=====Error in fixMobileData App, Couldn't initialize app!!=====");
     return;
   }
 });

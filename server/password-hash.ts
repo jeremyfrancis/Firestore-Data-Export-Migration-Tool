@@ -45,6 +45,7 @@ export const setup: dListOfPasswordHash = {
   "peak-achievers": { ...data["peak-achievers"] },
   "persistence-apptakeoff": { ...data["persistence-apptakeoff"] },
   "powerteam-apptakeoff": { ...data["powerteam-apptakeoff"] },
+  "powerbuilders-apptakeoff": { ...data["powerbuilders-apptakeoff"] },
   "preloaded-primerica-content": { ...data["preloaded-primerica-content"] },
   "protectors-apptakeoff": { ...data["protectors-apptakeoff"] },
   "run-fields": { ...data["run-fields"] },

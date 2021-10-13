@@ -925,8 +925,12 @@ const createUserAuthInDestination = async (
         return;
       }
       const userPasswordData = await getUserPasswordHash(userId, sourceDBApp);
-      !userPasswordData &&
-        console.log("NOT ABLE TO RETRIEVE userPasswordData for ", userEmail);
+
+      //! CHECK THIS BEFORE MIGRATING
+
+      if (Object.keys(userPasswordData).length === 0) {
+        throw Error("Error locating user's pwd info, check code");
+      }
       const userImportRecords = [
         {
           uid: userFromSource.uid,
@@ -995,9 +999,9 @@ const getUserPasswordHash = async (
   const foundUser = listUsersResult.users.find((x) => x.uid === uid);
   //foundUser?.metadata.
   if (foundUser) {
-    // console.log(
-    //   `🔥 FOUND user's pwd data in round# ${searchRoundNumber} for user ${uid}`
-    // );
+    console.log(
+      `🔥 FOUND user's pwd data in round# ${searchRoundNumber} for user ${uid}`
+    );
     passwordData.uid = foundUser.uid;
     passwordData.passwordHash = foundUser.passwordHash
       ? foundUser.passwordHash
@@ -1011,7 +1015,7 @@ const getUserPasswordHash = async (
     // );
     if (Object.keys(passwordData).length === 0 && listUsersResult.pageToken) {
       // List next batch of users.
-      // console.log(`Going for round ${searchRoundNumber + 1} `);
+      console.log(`Going for round ${searchRoundNumber + 1} `);
       passwordData = await getUserPasswordHash(
         uid,
         sourceDBApp,

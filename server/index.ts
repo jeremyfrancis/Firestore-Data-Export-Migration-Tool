@@ -980,17 +980,24 @@ const createUserAuthInDestination = async (
 const getUserPasswordHash = async (
   uid: string,
   sourceDBApp: admin.app.App,
-  nextPageToken?: any
+  nextPageToken?: any,
+  searchRoundNumber = 1
 ) => {
   // List batch of users, 1000 at a time.
-  const passwordData = {} as dUserPWDData;
+  let passwordData = {} as dUserPWDData;
   const listUsersResult = await sourceDBApp
     .auth()
     .listUsers(1000, nextPageToken);
 
+  // console.log(
+  //   `🔥 Finding the user's pwd data in round# ${searchRoundNumber} for user ${uid}`
+  // );
   const foundUser = listUsersResult.users.find((x) => x.uid === uid);
   //foundUser?.metadata.
   if (foundUser) {
+    // console.log(
+    //   `🔥 FOUND user's pwd data in round# ${searchRoundNumber} for user ${uid}`
+    // );
     passwordData.uid = foundUser.uid;
     passwordData.passwordHash = foundUser.passwordHash
       ? foundUser.passwordHash
@@ -998,11 +1005,25 @@ const getUserPasswordHash = async (
     passwordData.passwordSalt = foundUser.passwordSalt
       ? foundUser.passwordSalt
       : "";
+  } else {
+    // console.log(
+    //   `⚠️ Searching for next page and its token is ${listUsersResult.pageToken}`
+    // );
+    if (Object.keys(passwordData).length === 0 && listUsersResult.pageToken) {
+      // List next batch of users.
+      // console.log(`Going for round ${searchRoundNumber + 1} `);
+      passwordData = await getUserPasswordHash(
+        uid,
+        sourceDBApp,
+        listUsersResult.pageToken,
+        searchRoundNumber + 1
+      );
+    }
   }
-  if (passwordData.passwordHash === "" && listUsersResult.pageToken) {
-    // List next batch of users.
-    await getUserPasswordHash(uid, sourceDBApp, listUsersResult.pageToken);
-  }
+
+  // console.log(
+  //   `🚀 Returning password data ${JSON.stringify(passwordData)} for uid ${uid}`
+  // );
 
   return passwordData;
 };

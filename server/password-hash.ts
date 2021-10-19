@@ -1,3 +1,4 @@
+//@ts-ignore
 import { dListOfPasswordHash } from "./migrationSchema";
 import data = require("./password-hash.json");
 
@@ -5,8 +6,8 @@ export const setup: dListOfPasswordHash = {
   "primr-exp": { ...data["primr-exp"] },
   "app-takeoff-dev": { ...data["app-takeoff-dev"] },
   "app-takeoff": { ...data["app-takeoff"] },
-  "app-takeoff-team": { ...data["app-takeoff-team"] },
   "arrizon-hierarchy": { ...data["arrizon-hierarchy"] },
+  "app-takeoff-team": { ...data["app-takeoff-team"] },
   "barragan-familia-apptakeoff": { ...data["barragan-familia-apptakeoff"] },
   "benitez-rising-stars": { ...data["benitez-rising-stars"] },
   "brix-realty-apptakeoff": { ...data["brix-realty-apptakeoff"] },
@@ -17,10 +18,10 @@ export const setup: dListOfPasswordHash = {
   "crusaders-app-apptakeoff": { ...data["crusaders-app-apptakeoff"] },
   "david-and-associates": { ...data["david-and-associates"] },
   "dominators-mier-hierarchy": { ...data["dominators-mier-hierarchy"] },
-  /** This is now called Landmark Expansion */
   "dream-team-apptakeoff": { ...data["dream-team-apptakeoff"] },
   "dream-team-drake": { ...data["dream-team-drake"] },
   "elite-apptakeoff": { ...data["elite-apptakeoff"] },
+  "fearless-apptakeoff": { ...data["fearless-apptakeoff"] },
   "flores-fanatics": { ...data["flores-fanatics"] },
   "freedom-fighters-apptakeoff": { ...data["freedom-fighters-apptakeoff"] },
   "freedom-fighters-divita": { ...data["freedom-fighters-divita"] },

@@ -546,13 +546,15 @@ router.post("/migration", async (req, res) => {
                     // console.log(
                     //   `With cgData cgData._id is ${cgData._id} tempColl ${webCollName} is and tempCollDocId is ${tempCollDocId}`
                     // );
-                    const docRef = destFS
-                      ?.collection(webCollName)
-                      .doc(tempCollDocId)
-                      .collection(WEBFPATH.CONTACT_GROUPS)
-                      .doc(cgData._id);
-                    if (docRef && cgData)
-                      destBatch?.set(docRef, cgData, { merge: true });
+                    if (cgData._id && !cgData._id.includes("/")) {
+                      const docRef = destFS
+                        ?.collection(webCollName)
+                        .doc(tempCollDocId)
+                        .collection(WEBFPATH.CONTACT_GROUPS)
+                        .doc(cgData._id);
+                      if (docRef && cgData)
+                        destBatch?.set(docRef, cgData, { merge: true });
+                    }
                   });
 
                   listOfContacts.forEach((contactData) => {
@@ -560,16 +562,17 @@ router.post("/migration", async (req, res) => {
                     // console.log(
                     //   `With contactData contactData._cid is ${contactData._cid} tempColl ${webCollName} is and tempCollDocId is ${tempCollDocId}`
                     // );
+                    if (contactData._cid && !contactData._cid.includes("/")) {
+                      const docRef = destFS
+                        ?.collection(webCollName)
+                        .doc(tempCollDocId)
+                        .collection(WEBFPATH.CONTACTS)
+                        .doc(contactData._cid);
 
-                    const docRef = destFS
-                      ?.collection(webCollName)
-                      .doc(tempCollDocId)
-                      .collection(WEBFPATH.CONTACTS)
-                      .doc(contactData._cid);
-
-                    if (docRef && contactData) {
-                      console.log("CONTACT IS ", JSON.stringify(contactData));
-                      destBatch?.set(docRef, contactData, { merge: true });
+                      if (docRef && contactData) {
+                        console.log("CONTACT IS ", JSON.stringify(contactData));
+                        destBatch?.set(docRef, contactData, { merge: true });
+                      }
                     }
                   });
                   await destBatch?.commit();

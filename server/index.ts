@@ -1132,7 +1132,7 @@ const getPageIdFromName = async (sourceApp: admin.app.App, topage: string) => {
   const sourceDB = sourceApp.firestore();
   if (topage) {
     // console.log("topage before check ", topage);
-    if (topage && topage?.includes("page:")) {
+    if (topage.includes("page:")) {
       const newPageId = topage?.replace("page:", "");
       // console.log("beforepageId " + newPageId);
       const newPageRef = await sourceDB
@@ -1141,6 +1141,7 @@ const getPageIdFromName = async (sourceApp: admin.app.App, topage: string) => {
         .get();
       try {
         topage = "page:" + newPageRef.docs[0].id;
+        return;
       } catch (err) {
         topage = "";
       }
@@ -1161,7 +1162,7 @@ const getPageIdFromName = async (sourceApp: admin.app.App, topage: string) => {
       //NOTE If multiple pages with same name then grab the first one.
       //ref && console.log("Test for page Ref", JSON.stringify(ref.docs[0]));
       if (ref && ref.docs.length > 0) {
-        const mobPageId = ref ? ref.docs[0].data().id : "";
+        const mobPageId = ref ? ref.docs[0].id : "";
         topage = mobPageId ? "page:" + mobPageId : "";
         // console.log("mobPageId", mobPageId);
       } else {

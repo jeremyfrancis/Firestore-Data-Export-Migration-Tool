@@ -72,8 +72,14 @@ router.post("/fixMobileData", async (req, res) => {
     selectedDBList: iDBList[];
   } = req.body;
 
+  console.log(`fixMobileData is ${fixMobileData}`);
   //console.log(req.body);
   //#region This is Destination DB Area
+  if (!fixMobileData) {
+    res.status(444);
+    res.send("BAD CHOICE BOY!!");
+    return;
+  }
   const sourceProjectId = selectedDBList[0].projectId!.replace(
     "-service-account.json",
     ""
@@ -535,12 +541,13 @@ router.post("/migration", async (req, res) => {
               //TODO For Web User, move the listBuilder from MobileUserSchema to a sub-collection called contact-groups and contacts in WebUser document.
               if (webCollName === WEBFPATH.USERS) {
                 try {
+                  let batchCount = 0;
                   const contactGroupDocs: ContactGroupSchema[] =
                     mapListBuilderToContactGroups(collDoc);
                   const listOfContacts: dContactSuggestion[] =
                     mapListBuilderToContacts(collDoc);
 
-                  const destBatch = destDBApp?.firestore().batch();
+                  let destBatch = destDBApp?.firestore().batch();
                   contactGroupDocs.forEach((cgData) => {
                     // console.log("cgData", JSON.stringify(cgData));
                     // console.log(
@@ -552,12 +559,14 @@ router.post("/migration", async (req, res) => {
                         .doc(tempCollDocId)
                         .collection(WEBFPATH.CONTACT_GROUPS)
                         .doc(cgData._id);
-                      if (docRef && cgData)
+                      if (docRef && cgData) {
+                        batchCount += 1;
                         destBatch?.set(docRef, cgData, { merge: true });
+                      }
                     }
                   });
 
-                  listOfContacts.forEach((contactData) => {
+                  listOfContacts.forEach(async (contactData) => {
                     // console.log("contactData", JSON.stringify(contactData));
                     // console.log(
                     //   `With contactData contactData._cid is ${contactData._cid} tempColl ${webCollName} is and tempCollDocId is ${tempCollDocId}`
@@ -570,8 +579,23 @@ router.post("/migration", async (req, res) => {
                         .doc(contactData._cid);
 
                       if (docRef && contactData) {
-                        console.log("CONTACT IS ", JSON.stringify(contactData));
-                        destBatch?.set(docRef, contactData, { merge: true });
+                        if (batchCount < 500) {
+                          batchCount += 1;
+                          console.log(
+                            "CONTACT IS ",
+                            JSON.stringify(contactData)
+                          );
+                          destBatch?.set(docRef, contactData, { merge: true });
+                        } else {
+                          console.log(
+                            `🔥 Batch reached 500!! Committing it now!!`
+                          );
+                          await destBatch?.commit();
+                          console.log("⚠️ Resetting batch for writing!!");
+                          destBatch = undefined;
+                          destBatch = destDBApp?.firestore().batch();
+                          batchCount = 0;
+                        }
                       }
                     }
                   });

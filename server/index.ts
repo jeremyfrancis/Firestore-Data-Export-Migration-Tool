@@ -38,6 +38,50 @@ app.listen(PORT, () => {
   console.log(`Server listening on ${PORT}`);
 });
 
+router.post("/updateSubDomain", async (req, res) => {
+  const {
+    subdomain,
+    selectedDB,
+    destDBSAFile,
+  }: {
+    subdomain: string;
+    selectedDB: iDBList;
+    destDBSAFile: any;
+  } = req.body;
+
+  const sourceProjectId = selectedDB.projectId!.replace(
+    "-service-account.json",
+    ""
+  );
+  const destDBApp = initApp(
+    JSON.parse(destDBSAFile).project_id,
+    "destination",
+    destDBSAFile
+  );
+
+  if (!destDBApp) {
+    res.status(444);
+    res.send("Invalid Destination File Data Sent over.");
+    return;
+  }
+
+  if (subdomain && sourceProjectId) {
+    const destDB = destDBApp.firestore();
+    try {
+      await destDB
+        .collection(WEBFPATH.CONFIG)
+        .doc("variables-" + sourceProjectId)
+        .update({ subdomain: subdomain });
+    } catch (e) {
+      res.status(444);
+      res.send("Error while updating the subdomain");
+    }
+  } else {
+    res.status(444);
+    res.send("Error while updating subdomain value. Please check your input");
+  }
+});
+
 router.post("/clearAuth", async (req, res) => {
   const {
     deleteAuthRecords,
@@ -139,13 +183,13 @@ router.post("/fixMobileData", async (req, res) => {
         });
       }
 
-      console.log(
-        `Checking against ${
-          priPreloadedAndMTPageIds.length
-        } priPreloadedAndMTPageIds and they are ${JSON.stringify(
-          priPreloadedAndMTPageIds
-        )}`
-      );
+      // console.log(
+      //   `Checking against ${
+      //     priPreloadedAndMTPageIds.length
+      //   } priPreloadedAndMTPageIds and they are ${JSON.stringify(
+      //     priPreloadedAndMTPageIds
+      //   )}`
+      // );
 
       const posstRef = sourceDB.collection(MOBFPATH.POSSTS);
 
@@ -156,9 +200,9 @@ router.post("/fixMobileData", async (req, res) => {
           const newMoreRef = sourceDB?.collection(MOBFPATH.MORE).doc();
           if (newMoreRef) {
             const newMoreData = <dMoreItem>{ ...oldMoreDoc.data() };
-            console.log(
-              `Old "MORE" Id ${oldMoreDoc.id} and its new "more" id will be ${newMoreRef.id}`
-            );
+            // console.log(
+            //   `Old "MORE" Id ${oldMoreDoc.id} and its new "more" id will be ${newMoreRef.id}`
+            // );
             await sourceDB
               .collection(MOBFPATH.MORE)
               .doc(newMoreRef.id)
@@ -177,9 +221,9 @@ router.post("/fixMobileData", async (req, res) => {
       const srcAppPagesRef = await sourceDB.collection(MOBFPATH.PAGES).get();
       srcAppPagesRef?.docs.forEach(async (srcPage) => {
         //! TESTING ONLY FOR 1 PAGE FIRST
-        console.log(`The pageId inside the app is ${srcPage.id}`);
+        //console.log(`The pageId inside the app is ${srcPage.id}`);
         if (priPreloadedAndMTPageIds.includes(srcPage.id)) {
-          console.log("PAGE IDS MATCHED!!!");
+          // console.log("PAGE IDS MATCHED!!!");
           const newPageDocRef = sourceDB?.collection(MOBFPATH.PAGES).doc();
           if (newPageDocRef) {
             const newPageData = <MobMediaPageSchema>{
@@ -188,11 +232,11 @@ router.post("/fixMobileData", async (req, res) => {
               id: newPageDocRef.id,
             };
 
-            console.log(
-              `Old Page Id ${
-                srcPage.id //+ ":" + srcPage.data().name
-              } and its new id will be ${newPageData.id}` //+ ":" + newPageData.name
-            );
+            // console.log(
+            //   `Old Page Id ${
+            //     srcPage.id //+ ":" + srcPage.data().name
+            //   } and its new id will be ${newPageData.id}` //+ ":" + newPageData.name
+            // );
             await sourceDB
               .collection(MOBFPATH.PAGES)
               .doc(newPageDocRef.id)
@@ -232,9 +276,9 @@ router.post("/fixMobileData", async (req, res) => {
                 ...posst.data(),
                 goToPage: newPageData.id,
               };
-              console.log(
-                `Posst that will be affected by this is ${posst.id} and new goToPage will be ${newPageData.id}`
-              );
+              // console.log(
+              //   `Posst that will be affected by this is ${posst.id} and new goToPage will be ${newPageData.id}`
+              // );
               posstRef.doc(posst.id).set(posstData, { merge: true });
             });
 
@@ -242,9 +286,9 @@ router.post("/fixMobileData", async (req, res) => {
             await sourceDB.collection(MOBFPATH.PAGES).doc(srcPage.id).delete();
           }
         } else {
-          console.log(
-            `PageId ${srcPage.id} doesn't exist in Preloaded Content or Miller Time`
-          );
+          // console.log(
+          //   `PageId ${srcPage.id} doesn't exist in Preloaded Content or Miller Time`
+          // );
         }
       });
 
@@ -528,7 +572,7 @@ router.post("/migration", async (req, res) => {
                 tempCollDocId = !tempCollDocId.includes("-")
                   ? tempCollDocId + "-" + tempProjectId
                   : tempCollDocId;
-                console.log(tempCollDocId);
+                // console.log(tempCollDocId);
               }
               // console.log(
               //   `id before saving document ${webCollName} is ${tempCollDocId}`
@@ -581,10 +625,10 @@ router.post("/migration", async (req, res) => {
                       if (docRef && contactData) {
                         if (batchCount < 500) {
                           batchCount += 1;
-                          console.log(
-                            "CONTACT IS ",
-                            JSON.stringify(contactData)
-                          );
+                          // console.log(
+                          //   "CONTACT IS ",
+                          //   JSON.stringify(contactData)
+                          // );
                           destBatch?.set(docRef, contactData, { merge: true });
                         } else {
                           console.log(
@@ -701,11 +745,11 @@ router.post("/migration", async (req, res) => {
       });
       //#endregion
     } else {
-      console.log("Error with App Initialization for");
+      console.log(`Error while initializing the app for ${sourceProjectId}`);
       res.send("Error while initializing the app");
     }
   });
-
+  res.status(200);
   res.send("Migration Operation Completed!");
 });
 
@@ -728,7 +772,7 @@ const initApp = (projectId: string, appType: string, fileData?: string) => {
       }
     }
   } catch (err) {
-    console.log(projectId + " is not setup for collaboration yet.");
+    console.log("service Account file not found!!!");
     return undefined;
   }
 
@@ -736,7 +780,7 @@ const initApp = (projectId: string, appType: string, fileData?: string) => {
 
   admin.apps.forEach((app) => {
     if (app?.name === `${projectId}`) {
-      console.log("App is already available: ", JSON.stringify(app?.name));
+      //console.log("App is already available: ", JSON.stringify(app?.name));
       secondaryApp = app;
     }
   });
@@ -918,26 +962,26 @@ const createUserAuthInDestination = async (
 
   try {
     const existingUser = await destDBApp.auth().getUserByEmail(userEmail);
-    console.log(
-      `User exists and it's uid in ${destDBApp.name} env is ${existingUser.uid}`
-    );
+    // console.log(
+    //   `User exists and it's uid in ${destDBApp.name} env is ${existingUser.uid}`
+    // );
     if (existingUser.uid === userId || existingUser.email === userEmail) {
-      console.log(
-        `User already exists in the ${destDBApp.name}, skipping user creation step.`
-      );
+      // console.log(
+      //   `User already exists in the ${destDBApp.name}, skipping user creation step.`
+      // );
       return;
     }
   } catch (error) {
     try {
       const userFromSource = await sourceDBApp.auth().getUser(userId);
-      console.log(
-        `User doesn't exist in destination, grabbing data from ${sourceDBApp.name} and its email is ${userFromSource.email}`
-      );
+      // console.log(
+      //   `User doesn't exist in destination, grabbing data from ${sourceDBApp.name} and its email is ${userFromSource.email}`
+      // );
 
       let passwordHashSetup: dPasswordHash;
       const projectId = sourceDBApp.name;
       try {
-        console.log("Project ID for HASH", projectId);
+        // console.log("Project ID for HASH", projectId);
         passwordHashSetup = setup[projectId];
         if (Object.keys(passwordHashSetup).length === 0) {
           console.error(
@@ -968,10 +1012,10 @@ const createUserAuthInDestination = async (
           passwordSalt: Buffer.from(userPasswordData.passwordSalt, "base64"),
         },
       ];
-      if (userData.personali.email === "mankar.saurabh@gmail.com") {
-        console.log(`Data for ${userData.personali.email}`);
-        console.log(`userImportRecords ${JSON.stringify(userPasswordData)}`);
-      }
+      // if (userData.personali.email === "mankar.saurabh@gmail.com") {
+      //   console.log(`Data for ${userData.personali.email}`);
+      //   console.log(`userImportRecords ${JSON.stringify(userPasswordData)}`);
+      // }
       setTimeout(async () => {
         await destDBApp.auth().importUsers(userImportRecords, {
           hash: {
@@ -998,11 +1042,11 @@ const createUserAuthInDestination = async (
           .collection(WEBFPATH.USERS)
           .doc(userData._id)
           .delete();
-        console.log(
-          `Since Authentication wasn't created, deleting the user document for ${userData.personali.email} with uid ${userData._id}`
-        );
+        // console.log(
+        //   `Since Authentication wasn't created, deleting the user document for ${userData.personali.email} with uid ${userData._id}`
+        // );
       } catch (err) {
-        console.log("User Document wasn't created. It's all good!!");
+        //console.log("User Document wasn't created. It's all good!!");
       }
     }
   }
@@ -1026,9 +1070,9 @@ const getUserPasswordHash = async (
   const foundUser = listUsersResult.users.find((x) => x.uid === uid);
   //foundUser?.metadata.
   if (foundUser) {
-    console.log(
-      `🔥 FOUND user's pwd data in round# ${searchRoundNumber} for user ${uid}`
-    );
+    // console.log(
+    //   `🔥 FOUND user's pwd data in round# ${searchRoundNumber} for user ${uid}`
+    // );
     passwordData.uid = foundUser.uid;
     passwordData.passwordHash = foundUser.passwordHash
       ? foundUser.passwordHash
@@ -1042,7 +1086,7 @@ const getUserPasswordHash = async (
     // );
     if (Object.keys(passwordData).length === 0 && listUsersResult.pageToken) {
       // List next batch of users.
-      console.log(`Going for round ${searchRoundNumber + 1} `);
+      //console.log(`Going for round ${searchRoundNumber + 1} `);
       passwordData = await getUserPasswordHash(
         uid,
         sourceDBApp,

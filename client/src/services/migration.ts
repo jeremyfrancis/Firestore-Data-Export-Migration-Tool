@@ -73,6 +73,7 @@ export const handleStartMigration = async (state: migrationSchema) => {
     destDBSAFile: destDBSAFileData,
   };
 
+  // console.log(JSON.stringify(payload));
   await fetch(APIROUTE.MIGRATION, {
     method: "POST",
     body: JSON.stringify(payload),
@@ -84,6 +85,8 @@ export const handleStartMigration = async (state: migrationSchema) => {
     const statusText = await res.text();
     alert("Status is " + res.status + " and status text :" + statusText);
   });
+
+  // console.log("TEST MODE IS ON, uncomment line 76-86 in migration.ts");
 };
 
 export const handleClearAuthRecords = async (state: dClearAuthRecords) => {

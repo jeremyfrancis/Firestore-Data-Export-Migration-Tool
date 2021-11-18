@@ -11,6 +11,7 @@ import {
   FRBS_ROLE,
   iCollection,
   iDBList,
+  iServiceAccount,
   MOBFPATH,
   MobileScoreboardSchema,
   MobileUserSchema,
@@ -53,11 +54,22 @@ router.post("/updateSubDomain", async (req, res) => {
     "-service-account.json",
     ""
   );
-  const destDBApp = initApp(
-    JSON.parse(destDBSAFile).project_id,
-    "destination",
-    destDBSAFile
-  );
+  let destDBApp: admin.app.App | undefined;
+  if (typeof destDBSAFile === "object") {
+    const destDBSAFileObj: iServiceAccount = <iServiceAccount>destDBSAFile;
+    destDBApp = initApp(
+      destDBSAFileObj.project_id,
+      "destination",
+      destDBSAFile
+    );
+  } else {
+    //#region This is Destination DB Area
+    destDBApp = initApp(
+      JSON.parse(destDBSAFile).project_id,
+      "destination",
+      destDBSAFile
+    );
+  }
 
   if (!destDBApp) {
     res.status(444);
@@ -72,6 +84,11 @@ router.post("/updateSubDomain", async (req, res) => {
         .collection(WEBFPATH.CONFIG)
         .doc("variables-" + sourceProjectId)
         .update({ subdomain: subdomain });
+
+      res.status(200);
+      res.send(
+        `✅ Successfully updated the subdomain for ${sourceProjectId} wiht value ${subdomain}`
+      );
     } catch (e) {
       res.status(444);
       res.send("Error while updating the subdomain");
@@ -330,12 +347,22 @@ router.post("/migration", async (req, res) => {
     destDBSAFile: any;
   } = req.body;
 
-  //#region This is Destination DB Area
-  const destDBApp = initApp(
-    JSON.parse(destDBSAFile).project_id,
-    "destination",
-    destDBSAFile
-  );
+  let destDBApp: admin.app.App | undefined;
+  if (typeof destDBSAFile === "object") {
+    const destDBSAFileObj: iServiceAccount = <iServiceAccount>destDBSAFile;
+    destDBApp = initApp(
+      destDBSAFileObj.project_id,
+      "destination",
+      destDBSAFile
+    );
+  } else {
+    //#region This is Destination DB Area
+    destDBApp = initApp(
+      JSON.parse(destDBSAFile).project_id,
+      "destination",
+      destDBSAFile
+    );
+  }
 
   if (deleteAuthRecords && destDBApp) {
     await cleanUpDestinationAuthUsers(destDBApp);
@@ -766,7 +793,10 @@ const initApp = (projectId: string, appType: string, fileData?: string) => {
       serviceAccount = require(credFileName);
     } else {
       if (fileData) {
-        serviceAccount = JSON.parse(fileData);
+        if (typeof fileData !== "object") serviceAccount = JSON.parse(fileData);
+        else {
+          serviceAccount = fileData;
+        }
       } else {
         console.log("Destination DB service account info not passed.");
       }

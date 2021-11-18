@@ -61,6 +61,7 @@ export const setup: dListOfPasswordHash = {
   "team-diehl-apptakeoff": { ...data["team-diehl-apptakeoff"] },
   "team-hughes-all-in": { ...data["team-hughes-all-in"] },
   "team-impact-2f2f0": { ...data["team-impact-2f2f0"] },
+  "team-vip-apptakeoff": { ...data["team-vip-apptakeoff"] },
   "team-legacy-apptakeoff": { ...data["team-legacy-apptakeoff"] },
   "team-tenacious-apptakeoff": { ...data["team-tenacious-apptakeoff"] },
   "team-unstoppable-apptakeoff": { ...data["team-unstoppable-apptakeoff"] },
@@ -69,6 +70,7 @@ export const setup: dListOfPasswordHash = {
     ...data["the-global-alliance-apptakeoff"],
   },
   "thechargingrhinos-apptakeoff": { ...data["thechargingrhinos-apptakeoff"] },
+  "thestandard-apptakeoff": { ...data["thestandard-apptakeoff"] },
   "trendsetters-apptakeoff": { ...data["trendsetters-apptakeoff"] },
   "tu-empire-builders": { ...data["tu-empire-builders"] },
   "visionaries-apptakeoff": { ...data["visionaries-apptakeoff"] },
@@ -76,4 +78,6 @@ export const setup: dListOfPasswordHash = {
   "world-changers-apptakeoff": { ...data["world-changers-apptakeoff"] },
   "wyd1-apptakeoff": { ...data["wyd1-apptakeoff"] },
   "xtreme-nation": { ...data["xtreme-nation"] },
+  "vangoor-apptakeoff": { ...data["vangoor-apptakeoff"] },
+  "clone-apptakeoff": { ...data["clone-apptakeoff"] },
 };

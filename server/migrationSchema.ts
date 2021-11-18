@@ -12,6 +12,18 @@ export interface iCollection {
   collectionName?: string;
 }
 
+export interface iServiceAccount {
+  type: string;
+  project_id: string;
+  private_key_id: string;
+  private_key: string;
+  client_email: string;
+  client_id: string;
+  auth_uri: string;
+  token_uri: string;
+  auth_provider_x509_cert_url: string;
+  client_x509_cert_url: string;
+}
 //#region [rgba(255,0,90,0.1)] //TODO SCHEMA's related to scoreboard
 
 export interface MobileScoreboardSchema {

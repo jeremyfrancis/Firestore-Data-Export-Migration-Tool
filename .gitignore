@@ -36,3 +36,4 @@ client/src/components/demoDD.tsx
 server/test.json
 server/test2.json
 server/password-hash.json
+client/.env

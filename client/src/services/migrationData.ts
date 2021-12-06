@@ -26,26 +26,26 @@ export const getCollectionsList = () => {
       id: 1,
       collectionName: "config",
     },
-    {
-      id: 2,
-      collectionName: "emails",
-    },
-    {
-      id: 3,
-      collectionName: "email-templates",
-    },
-    {
-      id: 4,
-      collectionName: "email-schedules",
-    },
+    // {
+    //   id: 2,
+    //   collectionName: "emails",
+    // },
+    // {
+    //   id: 3,
+    //   collectionName: "email-templates",
+    // },
+    // {
+    //   id: 4,
+    //   collectionName: "email-schedules",
+    // },
     {
       id: 5,
       collectionName: "more",
     },
-    {
-      id: 6,
-      collectionName: "notifications",
-    },
+    // {
+    //   id: 6,
+    //   collectionName: "notifications",
+    // },
     {
       id: 7,
       collectionName: "pages",

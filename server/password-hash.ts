@@ -18,6 +18,7 @@ export const setup: dListOfPasswordHash = {
   "crusaders-app-apptakeoff": { ...data["crusaders-app-apptakeoff"] },
   "david-and-associates": { ...data["david-and-associates"] },
   "dominators-mier-hierarchy": { ...data["dominators-mier-hierarchy"] },
+  //Landmark Expansion = dream-team-apptakeoff
   "dream-team-apptakeoff": { ...data["dream-team-apptakeoff"] },
   "dream-team-drake": { ...data["dream-team-drake"] },
   "elite-apptakeoff": { ...data["elite-apptakeoff"] },

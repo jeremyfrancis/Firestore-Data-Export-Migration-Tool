@@ -149,6 +149,7 @@ router.post("/fixMobileData", async (req, res) => {
   if (selectedDBList.length > 1) {
     res.status(444);
     res.send("Cannot process more than 1 DB at a time!!");
+    return;
   }
 
   //NOTE Do not run this if running for MillerTime
@@ -157,16 +158,21 @@ router.post("/fixMobileData", async (req, res) => {
     res.send(
       `Cannot run this process on Master Yoda, I mean MillerTime's app 😉`
     );
+    return;
   }
 
   try {
     const sourceDBApp = initApp(sourceProjectId, "source");
+    const sourceDB = sourceDBApp?.firestore();
+
+    const cloneApp = initApp("clone-apptakeoff", "source");
+    const cloneDB = cloneApp?.firestore();
+
     const priPreloadedApp = initApp("preloaded-primerica-content", "source");
     const priPreloadedDB = priPreloadedApp?.firestore();
 
     const millertTimeApp = initApp("millertime-apptakeoff", "source");
     const millerTimeDB = millertTimeApp?.firestore();
-    const sourceDB = sourceDBApp?.firestore();
 
     if (fixMobileData && sourceDB && priPreloadedDB && millerTimeDB) {
       //!STEP 1: Get the copy of all the document ids from Primerica Preloaded Content & Miller Time
@@ -185,6 +191,12 @@ router.post("/fixMobileData", async (req, res) => {
         });
       }
 
+      const pageRefClone = await cloneDB?.collection(MOBFPATH.PAGES).get();
+      if (pageRefClone) {
+        pageRefClone.docs.forEach((doc) => {
+          priPreloadedAndMTPageIds.push(doc.id);
+        });
+      }
       //! STEP 1.1: Get Copy of all the "more" ids from Primerica Preloaded Content
       const priPreloadedAndMTMoreIds: string[] = [];
       const moreRefPri = await priPreloadedDB.collection(MOBFPATH.MORE).get();

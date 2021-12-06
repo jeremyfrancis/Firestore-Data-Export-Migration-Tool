@@ -153,10 +153,13 @@ router.post("/fixMobileData", async (req, res) => {
   }
 
   //NOTE Do not run this if running for MillerTime
-  if (!sourceProjectId.indexOf("millertime")) {
+  if (
+    !sourceProjectId.indexOf("millertime") ||
+    !sourceProjectId.includes("clone-apptakeoff")
+  ) {
     res.status(448);
     res.send(
-      `Cannot run this process on Master Yoda, I mean MillerTime's app 😉`
+      `Cannot run this process on Master Yoda, I mean MillerTime's / Clone app 😉`
     );
     return;
   }

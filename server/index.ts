@@ -154,8 +154,8 @@ router.post("/fixMobileData", async (req, res) => {
 
   //NOTE Do not run this if running for MillerTime
   if (
-    !sourceProjectId.indexOf("millertime") ||
-    !sourceProjectId.includes("clone-apptakeoff")
+    sourceProjectId.includes("millertime") ||
+    sourceProjectId.includes("clone-apptakeoff")
   ) {
     res.status(448);
     res.send(

@@ -153,10 +153,7 @@ router.post("/fixMobileData", async (req, res) => {
   }
 
   //NOTE Do not run this if running for MillerTime
-  if (
-    sourceProjectId.includes("millertime") ||
-    sourceProjectId.includes("clone-apptakeoff")
-  ) {
+  if (sourceProjectId.includes("millertime")) {
     res.status(448);
     res.send(
       `Cannot run this process on Master Yoda, I mean MillerTime's / Clone app 😉`
@@ -387,6 +384,8 @@ router.post("/migration", async (req, res) => {
     return;
   }
   const destFS = destDBApp?.firestore();
+  destFS?.settings({ ignoreUndefinedProperties: true });
+
   //#endregion
 
   //#region This is Source DB(s) area
@@ -1077,7 +1076,8 @@ const createUserAuthInDestination = async (
           },
         });
       }, 1000);
-    } catch (err) {
+    } catch (err: any) {
+      console.log(err.message);
       console.error(
         `Error while Creating User Authentication Information for ${userData.personali.email} !!`
       );

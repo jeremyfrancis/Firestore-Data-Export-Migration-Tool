@@ -384,7 +384,11 @@ router.post("/migration", async (req, res) => {
     return;
   }
   const destFS = destDBApp?.firestore();
-  destFS?.settings({ ignoreUndefinedProperties: true });
+  try {
+    destFS?.settings({ ignoreUndefinedProperties: true });
+  } catch (err) {
+    console.log("Settings Already Initialized");
+  }
 
   //#endregion
 
@@ -824,7 +828,7 @@ const initApp = (projectId: string, appType: string, fileData?: string) => {
 
   admin.apps.forEach((app) => {
     if (app?.name === `${projectId}`) {
-      //console.log("App is already available: ", JSON.stringify(app?.name));
+      console.log("App is already available: ", JSON.stringify(app?.name));
       secondaryApp = app;
     }
   });

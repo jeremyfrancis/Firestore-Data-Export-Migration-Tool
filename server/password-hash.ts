@@ -27,6 +27,7 @@ export const setup: dListOfPasswordHash = {
   "freedom-fighters-apptakeoff": { ...data["freedom-fighters-apptakeoff"] },
   "freedom-fighters-divita": { ...data["freedom-fighters-divita"] },
   "freedom-force-apptakeoff": { ...data["freedom-force-apptakeoff"] },
+  "gladiators-apptakeoff": { ...data["gladiators-apptakeoff"] },
   "huffmans-heroes": { ...data["huffmans-heroes"] },
   "huge-apptakeoff": { ...data["huge-apptakeoff"] },
   "iron-life-apptakeoff": { ...data["iron-life-apptakeoff"] },

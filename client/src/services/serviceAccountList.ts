@@ -23,6 +23,7 @@ export const list = [
   "freedom-fighters-apptakeoff-service-account.json",
   "freedom-fighters-divita-service-account.json",
   "freedom-force-apptakeoff-service-account.json",
+  "gladiators-apptakeoff-service-account.json",
   "huffmans-heroes-service-account.json",
   "huge-apptakeoff-service-account.json",
   "icf-apptakeoff-service-account.json",

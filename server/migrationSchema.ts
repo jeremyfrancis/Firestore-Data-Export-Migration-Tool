@@ -232,6 +232,8 @@ export interface ContactGroupSchema {
   _id: string;
   name: string;
   groupType: string; //CONTACTGROUPTYPE;
+  /** Array of document ids for the lists where the contacts belong */
+  groups: string[];
   //contacts: { displayName: string; phoneNumber?: number; email: string }[];
   contacts: string[];
   shareTo: WebUserSchema["_id"][];
@@ -314,7 +316,7 @@ export interface MobMediaPageSchema {
    * Field only needed by collaboration logic.
    */
   api?: string;
-  id: string;
+  _id: string;
 
   key?: string;
   /**
@@ -427,6 +429,7 @@ export interface dMobConfigVariables {
 }
 
 export interface dMoreItem {
+  _id: string;
   name: string;
   position: number;
   logo?: string;

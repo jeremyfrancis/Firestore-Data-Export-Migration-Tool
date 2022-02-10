@@ -201,6 +201,7 @@ router.post("/fixMobileData", async (req, res) => {
       const priPreloadedAndMTMoreIds: string[] = [];
       const moreRefPri = await priPreloadedDB.collection(MOBFPATH.MORE).get();
       const moreRefMT = await millerTimeDB.collection(MOBFPATH.MORE).get();
+      const moreRefClone = await cloneDB?.collection(MOBFPATH.MORE).get();
       if (moreRefPri) {
         moreRefPri.docs.forEach((doc) => {
           priPreloadedAndMTMoreIds.push(doc.id);
@@ -208,6 +209,11 @@ router.post("/fixMobileData", async (req, res) => {
       }
       if (moreRefMT) {
         moreRefMT.docs.forEach((doc) => {
+          priPreloadedAndMTMoreIds.push(doc.id);
+        });
+      }
+      if (moreRefClone) {
+        moreRefClone.docs.forEach((doc) => {
           priPreloadedAndMTMoreIds.push(doc.id);
         });
       }
@@ -228,7 +234,10 @@ router.post("/fixMobileData", async (req, res) => {
         if (priPreloadedAndMTMoreIds.includes(oldMoreDoc.id)) {
           const newMoreRef = sourceDB?.collection(MOBFPATH.MORE).doc();
           if (newMoreRef) {
-            const newMoreData = <dMoreItem>{ ...oldMoreDoc.data() };
+            const newMoreData = <dMoreItem>{
+              ...oldMoreDoc.data(),
+              _id: newMoreRef.id,
+            };
             // console.log(
             //   `Old "MORE" Id ${oldMoreDoc.id} and its new "more" id will be ${newMoreRef.id}`
             // );
@@ -258,7 +267,7 @@ router.post("/fixMobileData", async (req, res) => {
             const newPageData = <MobMediaPageSchema>{
               ...srcPage.data(),
               teamID: sourceProjectId,
-              id: newPageDocRef.id,
+              _id: newPageDocRef.id,
             };
 
             // console.log(
@@ -281,7 +290,7 @@ router.post("/fixMobileData", async (req, res) => {
               const oldPageContentData = pageContent.data();
               await sourceDB
                 .collection(MOBFPATH.PAGES)
-                .doc(newPageData.id)
+                .doc(newPageData._id)
                 .collection(MOBFPATH.CUSTOM_PAGE_CONTENT)
                 .doc(pageContent.id)
                 .set(oldPageContentData);
@@ -303,7 +312,7 @@ router.post("/fixMobileData", async (req, res) => {
             posstDocRef.docs.forEach((posst) => {
               const posstData = <MobPosstSchema>{
                 ...posst.data(),
-                goToPage: newPageData.id,
+                goToPage: newPageData._id,
               };
               // console.log(
               //   `Posst that will be affected by this is ${posst.id} and new goToPage will be ${newPageData.id}`
@@ -1219,6 +1228,10 @@ const mapListBuilderToContacts = (
               });
             });
           }
+
+          //FIXME groups array needed to be added here.
+          //FIXME If contact belongs to multiple lists then create a groups Array.
+
           if (contact.emailAddresses) {
             tempData.email =
               contact?.emailAddresses && contact?.emailAddresses.length > 0

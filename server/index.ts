@@ -174,7 +174,16 @@ router.post("/fixMobileData", async (req, res) => {
     const millertTimeApp = initApp("millertime-apptakeoff", "source");
     const millerTimeDB = millertTimeApp?.firestore();
 
-    if (fixMobileData && sourceDB && priPreloadedDB && millerTimeDB) {
+    const teamOfDreamsApp = initApp("protectors-apptakeoff", "source");
+    const teamOfDreamsDB = teamOfDreamsApp?.firestore();
+
+    if (
+      fixMobileData &&
+      sourceDB &&
+      priPreloadedDB &&
+      millerTimeDB &&
+      teamOfDreamsDB
+    ) {
       //!STEP 1: Get the copy of all the document ids from Primerica Preloaded Content & Miller Time
       const priPreloadedAndMTPageIds: string[] = [];
       const pageRefPri = await priPreloadedDB.collection(MOBFPATH.PAGES).get();
@@ -197,11 +206,22 @@ router.post("/fixMobileData", async (req, res) => {
           priPreloadedAndMTPageIds.push(doc.id);
         });
       }
+
+      const teamOfDreamsClone = await teamOfDreamsDB
+        ?.collection(MOBFPATH.PAGES)
+        .get();
+      if (teamOfDreamsClone) {
+        teamOfDreamsClone.docs.forEach((doc) => {
+          priPreloadedAndMTPageIds.push(doc.id);
+        });
+      }
       //! STEP 1.1: Get Copy of all the "more" ids from Primerica Preloaded Content
       const priPreloadedAndMTMoreIds: string[] = [];
       const moreRefPri = await priPreloadedDB.collection(MOBFPATH.MORE).get();
       const moreRefMT = await millerTimeDB.collection(MOBFPATH.MORE).get();
       const moreRefClone = await cloneDB?.collection(MOBFPATH.MORE).get();
+      const moreRefTOD = await teamOfDreamsDB?.collection(MOBFPATH.MORE).get();
+
       if (moreRefPri) {
         moreRefPri.docs.forEach((doc) => {
           priPreloadedAndMTMoreIds.push(doc.id);
@@ -214,6 +234,11 @@ router.post("/fixMobileData", async (req, res) => {
       }
       if (moreRefClone) {
         moreRefClone.docs.forEach((doc) => {
+          priPreloadedAndMTMoreIds.push(doc.id);
+        });
+      }
+      if (moreRefTOD) {
+        moreRefTOD.docs.forEach((doc) => {
           priPreloadedAndMTMoreIds.push(doc.id);
         });
       }
@@ -1245,6 +1270,7 @@ const mapListBuilderToContacts = (
           // tempData.pointers = "";
           // tempData.points = [];
           tempData.listId = list.title === "Build My List" ? "BML" : list.id;
+          tempData.groups.push(list.id);
           tempData.lanePositionId = "0:0";
           results.push(tempData);
         });

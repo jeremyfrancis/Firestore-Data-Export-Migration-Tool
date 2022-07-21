@@ -210,16 +210,24 @@ export interface dContactSuggestion extends Partial<Contacts.Contact> {
    * 3-2-1: Cold market contact
    */
   pointers: "1" | "2" | "3" | "4" | "5" | "";
+  /**
+   * @deprecated This has been replaced by qualifications field
+   */
   points?: number[];
   /**
-   * @description null for outside and if it contains value then that contact is an app member.
+   * @description This array holds value value from MACHO enum
    */
-  _uid?: string;
+  qualifications?: MACHO[];
   /**
-   * @description The list Id will indicate what list this contact belongs to.
-   *              A contact can belong to only one list at a time.
+   * @deprecated The list Id will indicate what list this contact belongs to.
+   *             This is now moved to groups
    */
   listId: string;
+  /**
+   * @description The groups will indicate what contact-group this contact belongs to.
+   *              A contact can belong to multiple contact-groups at a time.
+   */
+  groups: string[];
   /**
    * @description This field is utilized for BML-Web feature. The value of this field will be in format "rowId:columnId" format.
    * @example: "3:5" This means the contact belongs to lane 5 (in Trello style board) and vertical position 3 in that lane.
@@ -228,12 +236,26 @@ export interface dContactSuggestion extends Partial<Contacts.Contact> {
   profileImage?: string;
 }
 
+/**
+ * @description Qualification enum for MACHO
+ * - M = Married
+ * - A = Age (20-55)
+ * - C = Children
+ * - H = HomeOwner
+ * - O = Occupation(Job)
+ */
+export enum MACHO {
+  "MARRIED" = "M",
+  "AGE" = "A",
+  "CHILDREN" = "C",
+  "HOMEOWNER" = "H",
+  "OCCUPATION" = "O",
+}
+
 export interface ContactGroupSchema {
   _id: string;
   name: string;
   groupType: string; //CONTACTGROUPTYPE;
-  /** Array of document ids for the lists where the contacts belong */
-  groups: string[];
   //contacts: { displayName: string; phoneNumber?: number; email: string }[];
   contacts: string[];
   shareTo: WebUserSchema["_id"][];

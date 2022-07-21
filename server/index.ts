@@ -5,9 +5,7 @@ import {
   ContactGroupSchema,
   dContactSuggestion,
   dMobMediaPageItem,
-  dMoreItem,
-  dPasswordHash,
-  dUserPWDData,
+  dMoreItem, dUserPWDData,
   FRBS_ROLE,
   iCollection,
   iDBList,
@@ -20,9 +18,9 @@ import {
   THEME,
   WEBFPATH,
   WebScoreboardSchema,
-  WebUserSchema,
+  WebUserSchema
 } from "./migrationSchema";
-import { setup } from "./password-hash";
+// import { setup } from "./password-hash";
 
 const PORT = 3001;
 const app = express();
@@ -809,14 +807,15 @@ router.post("/migration", async (req, res) => {
 
             if (coll === MOBFPATH.USERS && mapUserSchema) {
               // console.log("Making UID Updates");
-              if (destDBApp)
-                createUserAuthInDestination(
-                  outCollData,
-                  sourceDBApp,
-                  destDBApp
-                ).then(() => {
-                  //console.log("Completed UID Update");
-                });
+              if (destDBApp) {
+                //   createUserAuthInDestination(
+                //     outCollData,
+                //     sourceDBApp,
+                //     destDBApp
+                //   ).then(() => {
+                //     //console.log("Completed UID Update");
+                //   });
+              }
             }
           });
           //
@@ -1028,112 +1027,112 @@ const getLevelNameAndItemsArray = (levels: {
   return result;
 };
 
-const createUserAuthInDestination = async (
-  userData: WebUserSchema,
-  sourceDBApp: admin.app.App,
-  destDBApp: admin.app.App
-) => {
-  const userId = userData._id ? userData._id : "";
-  const userEmail = userData.personali.email ? userData.personali.email : "";
+// const createUserAuthInDestination = async (
+//   userData: WebUserSchema,
+//   sourceDBApp: admin.app.App,
+//   destDBApp: admin.app.App
+// ) => {
+//   const userId = userData._id ? userData._id : "";
+//   const userEmail = userData.personali.email ? userData.personali.email : "";
 
-  // console.log(
-  //   `Check for user with Id ${userId} and email ${userEmail} in the ${destDBApp.name}`
-  // );
+//   // console.log(
+//   //   `Check for user with Id ${userId} and email ${userEmail} in the ${destDBApp.name}`
+//   // );
 
-  if (userId === "" || userId === undefined) return;
+//   if (userId === "" || userId === undefined) return;
 
-  try {
-    const existingUser = await destDBApp.auth().getUserByEmail(userEmail);
-    // console.log(
-    //   `User exists and it's uid in ${destDBApp.name} env is ${existingUser.uid}`
-    // );
-    if (existingUser.uid === userId || existingUser.email === userEmail) {
-      // console.log(
-      //   `User already exists in the ${destDBApp.name}, skipping user creation step.`
-      // );
-      return;
-    }
-  } catch (error) {
-    try {
-      const userFromSource = await sourceDBApp.auth().getUser(userId);
-      // console.log(
-      //   `User doesn't exist in destination, grabbing data from ${sourceDBApp.name} and its email is ${userFromSource.email}`
-      // );
+//   try {
+//     const existingUser = await destDBApp.auth().getUserByEmail(userEmail);
+//     // console.log(
+//     //   `User exists and it's uid in ${destDBApp.name} env is ${existingUser.uid}`
+//     // );
+//     if (existingUser.uid === userId || existingUser.email === userEmail) {
+//       // console.log(
+//       //   `User already exists in the ${destDBApp.name}, skipping user creation step.`
+//       // );
+//       return;
+//     }
+//   } catch (error) {
+//     try {
+//       const userFromSource = await sourceDBApp.auth().getUser(userId);
+//       // console.log(
+//       //   `User doesn't exist in destination, grabbing data from ${sourceDBApp.name} and its email is ${userFromSource.email}`
+//       // );
 
-      let passwordHashSetup: dPasswordHash;
-      const projectId = sourceDBApp.name;
-      try {
-        // console.log("Project ID for HASH", projectId);
-        passwordHashSetup = setup[projectId];
-        if (Object.keys(passwordHashSetup).length === 0) {
-          console.error(
-            `Password Hash Setup does not exist for hierarchy ${projectId}. Reach out to DEV Team!`
-          );
-          return;
-        }
-      } catch (err) {
-        console.error(
-          `Password Hash Setup does not exist for hierarchy ${projectId}. Reach out to DEV Team!`
-        );
-        return;
-      }
-      const userPasswordData = await getUserPasswordHash(userId, sourceDBApp);
+//       let passwordHashSetup: dPasswordHash;
+//       const projectId = sourceDBApp.name;
+//       try {
+//         // console.log("Project ID for HASH", projectId);
+//         passwordHashSetup = setup[projectId];
+//         if (Object.keys(passwordHashSetup).length === 0) {
+//           console.error(
+//             `Password Hash Setup does not exist for hierarchy ${projectId}. Reach out to DEV Team!`
+//           );
+//           return;
+//         }
+//       } catch (err) {
+//         console.error(
+//           `Password Hash Setup does not exist for hierarchy ${projectId}. Reach out to DEV Team!`
+//         );
+//         return;
+//       }
+//       const userPasswordData = await getUserPasswordHash(userId, sourceDBApp);
 
-      //! CHECK THIS BEFORE MIGRATING
+//       //! CHECK THIS BEFORE MIGRATING
 
-      if (Object.keys(userPasswordData).length === 0) {
-        throw Error("Error locating user's pwd info, check code");
-      }
-      const userImportRecords = [
-        {
-          uid: userFromSource.uid,
-          email: userFromSource.email,
-          // Must be provided in a byte buffer.
-          passwordHash: Buffer.from(userPasswordData.passwordHash, "base64"),
-          // Must be provided in a byte buffer.
-          passwordSalt: Buffer.from(userPasswordData.passwordSalt, "base64"),
-        },
-      ];
-      // if (userData.personali.email === "mankar.saurabh@gmail.com") {
-      //   console.log(`Data for ${userData.personali.email}`);
-      //   console.log(`userImportRecords ${JSON.stringify(userPasswordData)}`);
-      // }
-      setTimeout(async () => {
-        await destDBApp.auth().importUsers(userImportRecords, {
-          hash: {
-            algorithm: "SCRYPT",
-            // All the parameters below can be obtained from the Firebase Console's users section.
-            // Must be provided in a byte buffer.
-            key: Buffer.from(passwordHashSetup.base64_signer_key, "base64"),
-            saltSeparator: Buffer.from(
-              passwordHashSetup.base64_salt_separator,
-              "base64"
-            ),
-            rounds: 8,
-            memoryCost: 14,
-          },
-        });
-      }, 1000);
-    } catch (err: any) {
-      console.log(err.message);
-      console.error(
-        `Error while Creating User Authentication Information for ${userData.personali.email} !!`
-      );
-      try {
-        await destDBApp
-          .firestore()
-          .collection(WEBFPATH.USERS)
-          .doc(userData._id)
-          .delete();
-        // console.log(
-        //   `Since Authentication wasn't created, deleting the user document for ${userData.personali.email} with uid ${userData._id}`
-        // );
-      } catch (err) {
-        //console.log("User Document wasn't created. It's all good!!");
-      }
-    }
-  }
-};
+//       if (Object.keys(userPasswordData).length === 0) {
+//         throw Error("Error locating user's pwd info, check code");
+//       }
+//       const userImportRecords = [
+//         {
+//           uid: userFromSource.uid,
+//           email: userFromSource.email,
+//           // Must be provided in a byte buffer.
+//           passwordHash: Buffer.from(userPasswordData.passwordHash, "base64"),
+//           // Must be provided in a byte buffer.
+//           passwordSalt: Buffer.from(userPasswordData.passwordSalt, "base64"),
+//         },
+//       ];
+//       // if (userData.personali.email === "mankar.saurabh@gmail.com") {
+//       //   console.log(`Data for ${userData.personali.email}`);
+//       //   console.log(`userImportRecords ${JSON.stringify(userPasswordData)}`);
+//       // }
+//       setTimeout(async () => {
+//         await destDBApp.auth().importUsers(userImportRecords, {
+//           hash: {
+//             algorithm: "SCRYPT",
+//             // All the parameters below can be obtained from the Firebase Console's users section.
+//             // Must be provided in a byte buffer.
+//             key: Buffer.from(passwordHashSetup.base64_signer_key, "base64"),
+//             saltSeparator: Buffer.from(
+//               passwordHashSetup.base64_salt_separator,
+//               "base64"
+//             ),
+//             rounds: 8,
+//             memoryCost: 14,
+//           },
+//         });
+//       }, 1000);
+//     } catch (err: any) {
+//       console.log(err.message);
+//       console.error(
+//         `Error while Creating User Authentication Information for ${userData.personali.email} !!`
+//       );
+//       try {
+//         await destDBApp
+//           .firestore()
+//           .collection(WEBFPATH.USERS)
+//           .doc(userData._id)
+//           .delete();
+//         // console.log(
+//         //   `Since Authentication wasn't created, deleting the user document for ${userData.personali.email} with uid ${userData._id}`
+//         // );
+//       } catch (err) {
+//         //console.log("User Document wasn't created. It's all good!!");
+//       }
+//     }
+//   }
+// };
 
 const getUserPasswordHash = async (
   uid: string,
